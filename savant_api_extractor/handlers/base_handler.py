@@ -1,7 +1,10 @@
 """Base handler for Savant API data extraction."""
 
 from abc import ABC
+import io
+from typing import Any, Dict
 import pandas as pd
+import requests
 
 from savant_api_extractor.utils.logger import Logger
 
@@ -21,16 +24,16 @@ class BaseHandler(ABC):
         self.logger = Logger(f"{__name__}.{name}")
         self.name = name
 
-    def clean_headers(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Clean CSV headers by removing whitespace and converting to lowercase.
+    def get_dataframe(self, query_params: Dict[str, Any]) -> pd.DataFrame:
+        self.logger.debug(f"Query params: {query_params}")
+        # Make API request
+        response = requests.get(self.BASE_URL, params=query_params, timeout=30)
+        response.raise_for_status()
 
-        Args:
-            df: DataFrame with raw headers
+        # Read CSV from response
+        df = pd.read_csv(
+            io.StringIO(response.text),
+            low_memory=False,
+        )
 
-        Returns:
-            DataFrame with cleaned headers
-        """
-        self.logger.info("Cleaning CSV headers")
-        df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
         return df

@@ -1,12 +1,12 @@
 """Handler for extracting pitcher statistics from Savant API."""
 
-import io
-from typing import Any
+from typing import Any, Dict
 
 import pandas as pd
 import requests
 
 from savant_api_extractor.handlers.base_handler import BaseHandler
+from savant_api_extractor.utils import PITCHER_HEADER_MAPPINGS
 
 
 class PitcherHandler(BaseHandler):
@@ -16,7 +16,7 @@ class PitcherHandler(BaseHandler):
         """Initialize the pitcher handler."""
         super().__init__("PitcherHandler")
 
-    def extract(self, query_params: dict[str, Any]) -> pd.DataFrame:
+    def extract(self, query_params: Dict[str, Any]) -> pd.DataFrame:
         """
         Extract pitcher statistics from the Savant API.
 
@@ -27,23 +27,17 @@ class PitcherHandler(BaseHandler):
             DataFrame with cleaned pitcher statistics
         """
         self.logger.info("Extracting pitcher statistics")
-        self.logger.debug(f"Query params: {query_params}")
 
         try:
-            # Make API request
-            response = requests.get(super().BASE_URL, params=query_params, timeout=30)
-            response.raise_for_status()
-
-            # Read CSV from response
-            df = pd.read_csv(
-                io.StringIO(response.text),
-                low_memory=False,
-            )
+            df = super().get_dataframe(query_params)
 
             self.logger.info(f"Retrieved {len(df)} rows of pitcher data")
 
-            # Clean headers
-            df = self.clean_headers(df)
+            # Clean headers: rename and filter to only mapped columns
+            df = df.rename(columns=PITCHER_HEADER_MAPPINGS)
+            # Keep only columns that exist in the mapping (after renaming)
+            mapped_columns = set(PITCHER_HEADER_MAPPINGS.values())
+            df = df[[col for col in df.columns if col in mapped_columns]]
 
             return df
 

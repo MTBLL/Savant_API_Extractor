@@ -59,12 +59,11 @@ class TestPitcherHandler:
         assert handler.logger is not None
 
     @patch("savant_api_extractor.handlers.pitcher_handler.requests.get")
-    def test_pitcher_handler_extract(self, mock_get: MagicMock) -> None:
+    def test_pitcher_handler_extract(self, mock_get: MagicMock, pitchers_fixture: str) -> None:
         """Test that PitcherHandler can extract data."""
         # Mock CSV response
-        csv_data = "col1,col2\nvalue1,value2\nvalue3,value4"
         mock_response = MagicMock()
-        mock_response.text = csv_data
+        mock_response.text = pitchers_fixture
         mock_response.raise_for_status = MagicMock()
         mock_get.return_value = mock_response
 
@@ -73,8 +72,9 @@ class TestPitcherHandler:
         df = handler.extract(query_params)
 
         assert isinstance(df, pd.DataFrame)
-        assert len(df) == 2
-        assert "col1" in df.columns
+        assert len(df) > 0 
+        assert "player_name" not in df.columns
+        assert "name" in df.columns
         mock_get.assert_called_once()
 
     @patch("savant_api_extractor.handlers.pitcher_handler.requests.get")
