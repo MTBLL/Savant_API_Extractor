@@ -7,12 +7,11 @@ import pandas as pd
 import requests
 
 from savant_api_extractor.handlers.base_handler import BaseHandler
+from savant_api_extractor.utils import BATTER_HEADER_MAPPINGS
 
 
 class BatterHandler(BaseHandler):
     """Handler for extracting batter statistics."""
-
-    BASE_URL = "https://baseballsavant.mlb.com/statcast_search/csv?"
 
     def __init__(self) -> None:
         """Initialize the batter handler."""
@@ -33,7 +32,7 @@ class BatterHandler(BaseHandler):
 
         try:
             # Make API request
-            response = requests.get(self.BASE_URL, params=query_params, timeout=30)
+            response = requests.get(super().BASE_URL, params=query_params, timeout=30)
             response.raise_for_status()
 
             # Read CSV from response
@@ -45,7 +44,7 @@ class BatterHandler(BaseHandler):
             self.logger.info(f"Retrieved {len(df)} rows of batter data")
 
             # Clean headers
-            df = self.clean_headers(df)
+            df = df.rename(columns=BATTER_HEADER_MAPPINGS)
 
             return df
 

@@ -12,8 +12,6 @@ from savant_api_extractor.handlers.base_handler import BaseHandler
 class PitcherHandler(BaseHandler):
     """Handler for extracting pitcher statistics."""
 
-    BASE_URL = "https://baseballsavant.mlb.com/statcast_search/csv?"
-
     def __init__(self) -> None:
         """Initialize the pitcher handler."""
         super().__init__("PitcherHandler")
@@ -33,7 +31,7 @@ class PitcherHandler(BaseHandler):
 
         try:
             # Make API request
-            response = requests.get(self.BASE_URL, params=query_params, timeout=30)
+            response = requests.get(super().BASE_URL, params=query_params, timeout=30)
             response.raise_for_status()
 
             # Read CSV from response

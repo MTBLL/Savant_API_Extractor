@@ -1,8 +1,6 @@
 """Base handler for Savant API data extraction."""
 
-from abc import ABC, abstractmethod
-from typing import Any
-
+from abc import ABC
 import pandas as pd
 
 from savant_api_extractor.utils.logger import Logger
@@ -10,6 +8,8 @@ from savant_api_extractor.utils.logger import Logger
 
 class BaseHandler(ABC):
     """Base class for all data handlers."""
+
+    BASE_URL = "https://baseballsavant.mlb.com/statcast_search/csv?"
 
     def __init__(self, name: str) -> None:
         """
@@ -20,19 +20,6 @@ class BaseHandler(ABC):
         """
         self.logger = Logger(f"{__name__}.{name}")
         self.name = name
-
-    @abstractmethod
-    def extract(self, query_params: dict[str, Any]) -> pd.DataFrame:
-        """
-        Extract data from the API.
-
-        Args:
-            query_params: Query parameters for the API request
-
-        Returns:
-            DataFrame with cleaned data
-        """
-        pass
 
     def clean_headers(self, df: pd.DataFrame) -> pd.DataFrame:
         """
