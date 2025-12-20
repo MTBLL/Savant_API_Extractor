@@ -57,10 +57,11 @@ HF_COUNT: Final[str] = "hfC"
 
 # Game Type (hfGT)
 # Values: Pipe-separated codes (e.g., "R|" for regular season)
-# Common values: "R" (Regular Season), "P" (Playoffs), etc.
+# Common values: "R" (Regular Season), "PO" (Playoffs), "S" (Spring Training), etc.
 HF_GAME_TYPE: Final[str] = "hfGT"
+GAME_TYPE_SPRING_TRAINING: Final[str] = "S"
 GAME_TYPE_REGULAR: Final[str] = "R"
-GAME_TYPE_PLAYOFFS: Final[str] = "P"
+GAME_TYPE_PLAYOFFS: Final[str] = "PO"
 
 # Season (hfSea)
 # Values: Pipe-separated years (e.g., "2025|")
@@ -287,4 +288,3 @@ EXAMPLE_PITCHER_PARAMS: dict[str, str] = {
     CHK_STATS_K_PERCENT: CHK_STATS_ON,
     CHK_STATS_XWOBA: CHK_STATS_ON,
 }
-
