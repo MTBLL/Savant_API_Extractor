@@ -49,6 +49,17 @@ class TestBatterHandler:
         
         mock_get.assert_called_once()
 
+    @patch("savant_api_extractor.handlers.pitcher_handler.requests.get")
+    def test_batter_handler_request_exception(self, mock_get: MagicMock) -> None:
+        """Test that PitcherHandler raises RequestException on network errors."""
+        mock_get.side_effect = requests.exceptions.ConnectionError("Connection failed")
+
+        handler = BatterHandler()
+        query_params = {"all": "true", "type": "details"}
+
+        with pytest.raises(requests.exceptions.ConnectionError):
+            handler.extract(query_params)
+
 class TestPitcherHandler:
     """Test cases for the PitcherHandler class."""
 

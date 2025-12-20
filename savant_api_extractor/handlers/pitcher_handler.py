@@ -44,6 +44,3 @@ class PitcherHandler(BaseHandler):
         except requests.exceptions.RequestException as e:
             self.logger.error(f"Error fetching pitcher data: {e}")
             raise
-        except Exception as e:
-            self.logger.error(f"Error processing pitcher data: {e}")
-            raise

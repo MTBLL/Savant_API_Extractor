@@ -44,6 +44,3 @@ class BatterHandler(BaseHandler):
         except requests.exceptions.RequestException as e:
             self.logger.error(f"Error fetching batter data: {e}")
             raise
-        except Exception as e:
-            self.logger.error(f"Error processing batter data: {e}")
-            raise
