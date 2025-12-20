@@ -5,6 +5,7 @@ from .query_params import (
     PLAYER_TYPE_BATTER,
     PLAYER_TYPE_PITCHER,
 )
+from .thresholds import ThresholdType
 
 __all__ = [
     "BATTER_HEADER_MAPPINGS",
@@ -13,4 +14,5 @@ __all__ = [
     "Logger",
     "PLAYER_TYPE_BATTER",
     "PLAYER_TYPE_PITCHER",
+    "ThresholdType",
 ]
