@@ -3,7 +3,7 @@ name = "savant-api-extractor"
 version = "0.1.0"
 description = "Savant API Extractor"
 authors = [
-    {"name": "Taylor 'TP' Pubins", "email": "tpubz@icloud.com"},
+    {"name" = "Taylor 'TP' Pubins", "email" = "tpubz@icloud.com"},
 ]
 readme = "README.md"
 requires-python = ">=3.13"
