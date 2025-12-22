@@ -2,7 +2,9 @@
 name = "savant-api-extractor"
 version = "0.1.0"
 description = "Savant API Extractor"
-author = "Taylor 'TP' Pubins"
+authors = [
+    {"name": "Taylor 'TP' Pubins", "email": "tpubz@icloud.com"},
+]
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -16,8 +18,8 @@ dependencies = [
 savant-extract = "savant_api_extractor.__main__:main"
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["uv_build >= 0.9.17, <0.10.0"]
+build-backend = "uv_build"
 
 [project.optional-dependencies]
 dev = [
