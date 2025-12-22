@@ -257,7 +257,7 @@ EXAMPLE_PITCHER_PARAMS: dict[str, str] = {
     HF_COUNT: "",
     HF_SEASON: "2025|",
     HF_SITUATION: "",
-    "player_type": PLAYER_TYPE_PITCHER,
+    "player_type": PLAYER_TYPE_BATTER,
     HF_OUTS: "",
     HOME_ROAD: "",
     PITCHER_THROWS: "",

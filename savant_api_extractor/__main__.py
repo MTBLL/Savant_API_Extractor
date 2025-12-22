@@ -1,24 +1,34 @@
 """CLI entry point for Savant API Extractor."""
 
-import json
 from pathlib import Path
 
 import click
 
 from savant_api_extractor.runner.savant_runner import SavantRunner
 from savant_api_extractor.utils.logger import Logger
+from savant_api_extractor.utils.thresholds import ThresholdType
 
 
 @click.command()
 @click.option(
-    "--batter-params",
-    type=click.Path(exists=True),
-    help="Path to JSON file with batter query parameters",
+    "--threshold",
+    type=click.Choice(
+        ["default", "wide", "open", "spring_training"], case_sensitive=False
+    ),
+    default="default",
+    help=(
+        "Threshold type for minimum plate appearances. "
+        "default: 30 PA for batters, 20 for pitchers. "
+        "wide: 50% of default (15/10). "
+        "open: no minimums. "
+        "spring_training: no minimums, spring training games only."
+    ),
 )
 @click.option(
-    "--pitcher-params",
-    type=click.Path(exists=True),
-    help="Path to JSON file with pitcher query parameters",
+    "--season",
+    type=str,
+    default="2025",
+    help="Season year (e.g., '2025'). If not provided, uses API defaults.",
 )
 @click.option(
     "--output-dir",
@@ -39,8 +49,8 @@ from savant_api_extractor.utils.logger import Logger
     help="Type of data to extract (default: all)",
 )
 def main(
-    batter_params: str | None,
-    pitcher_params: str | None,
+    threshold: str,
+    season: str,
     output_dir: str,
     output_filename: str,
     extraction_type: str,
@@ -48,50 +58,25 @@ def main(
     """
     Extract statistics from Baseball Savant API.
 
-    Query parameters should be provided as JSON files. Each file should contain
-    a JSON object with the query parameters as key-value pairs.
-
-    Example query params file:
-    {
-        "all": "true",
-        "type": "details",
-        "player_type": "batter"
-    }
+    The controller automatically generates query parameters based
+    on threshold options.
+    This is useful for early season when players haven't reached
+    normal minimums yet.
     """
     logger = Logger(f"{__name__}.main")
     logger.info("Starting Savant API extraction")
 
-    # Load query parameters
-    batter_query_params: dict | None = None
-    pitcher_query_params: dict | None = None
-
-    if batter_params:
-        with open(batter_params, "r") as f:
-            batter_query_params = json.load(f)
-        logger.info(f"Loaded batter params from {batter_params}")
-
-    if pitcher_params:
-        with open(pitcher_params, "r") as f:
-            pitcher_query_params = json.load(f)
-        logger.info(f"Loaded pitcher params from {pitcher_params}")
+    # Convert threshold string to enum
+    threshold_type = ThresholdType(threshold.lower())
 
     # Initialize runner
-    runner = SavantRunner(output_dir=Path(output_dir))
+    runner = SavantRunner(
+        season, extraction_type, threshold_type, output_dir=Path(output_dir), output_filename=output_filename
+        )
 
     # Run extraction based on type
     try:
-        if extraction_type.lower() == "batters":
-            if not batter_query_params:
-                logger.error("Batter params required for batter extraction")
-                raise click.BadParameter("--batter-params required when type=batters")
-            runner.run_batters(batter_query_params, output_filename)
-        elif extraction_type.lower() == "pitchers":
-            if not pitcher_query_params:
-                logger.error("Pitcher params required for pitcher extraction")
-                raise click.BadParameter("--pitcher-params required when type=pitchers")
-            runner.run_pitchers(pitcher_query_params, output_filename)
-        else:  # all
-            runner.run_all(batter_query_params, pitcher_query_params, output_filename)
+        _ = runner.run()
 
         logger.info("Extraction completed successfully")
     except Exception as e:

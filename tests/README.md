@@ -13,7 +13,7 @@ uv run pytest
 To run with coverage report:
 
 ```bash
-uv run pytest --cov=fangraphs_api_extractor --cov-report=term-missing
+uv run pytest --cov=savant_api_extractor --cov-report=term-missing
 ```
 
 ## Test Fixtures

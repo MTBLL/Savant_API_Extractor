@@ -3,6 +3,8 @@
 from enum import Enum
 from typing import Final
 
+from savant_api_extractor.utils.extraction_type import ExtractionType
+
 
 class ThresholdType(str, Enum):
     """Threshold types for minimum plate appearances."""
@@ -30,7 +32,7 @@ SPRING_TRAINING_MIN_PAS_BATTER: Final[int] = 0
 SPRING_TRAINING_MIN_PAS_PITCHER: Final[int] = 0
 
 
-def get_min_pas(threshold_type: ThresholdType, player_type: str) -> str:
+def get_min_pas(threshold_type: ThresholdType, player_type: ExtractionType) -> str:
     """
     Get minimum plate appearances based on threshold type and player type.
 
@@ -47,25 +49,25 @@ def get_min_pas(threshold_type: ThresholdType, player_type: str) -> str:
         case ThresholdType.DEFAULT:
             min_pas = (
                 str(DEFAULT_MIN_PAS_BATTER)
-                if player_type == "batter"
+                if player_type == ExtractionType.BATTER
                 else str(DEFAULT_MIN_PAS_PITCHER)
             )
         case ThresholdType.WIDE:
             min_pas = (
                 str(WIDE_MIN_PAS_BATTER)
-                if player_type == "batter"
+                if player_type == ExtractionType.BATTER
                 else str(WIDE_MIN_PAS_PITCHER)
             )
         case ThresholdType.OPEN:
             min_pas = (
                 str(OPEN_MIN_PAS_BATTER)
-                if player_type == "batter"
+                if player_type == ExtractionType.BATTER
                 else str(OPEN_MIN_PAS_PITCHER)
             )
         case ThresholdType.SPRING_TRAINING:
             min_pas = (
                 str(SPRING_TRAINING_MIN_PAS_BATTER)
-                if player_type == "batter"
+                if player_type == ExtractionType.BATTER
                 else str(SPRING_TRAINING_MIN_PAS_PITCHER)
             )
 
