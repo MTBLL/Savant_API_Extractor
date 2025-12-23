@@ -1,4 +1,6 @@
 # Savant API Extractor
+![Pytest](https://github.com/MTBLL/Savant_API_Extractor/actions/workflows/pytest.yml/badge.svg)
+![Mypy](https://github.com/MTBLL/Savant_API_Extractor/actions/workflows/mypy.yml/badge.svg)
 
 ## Description
 This app pulls in the CSV api endpoint for the Baseball Savant statcast search.
