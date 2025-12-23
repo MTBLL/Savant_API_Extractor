@@ -52,9 +52,10 @@ def add_name_columns(df: pd.DataFrame, name_column: str = "name") -> pd.DataFram
     df["name_ascii"] = full_name.map(_to_ascii)
     df["slug"] = full_name.map(_slugify)
 
-    insert_after = df.columns.get_loc(name_column) + 1
+    columns = df.columns.to_list()
+    insert_after = columns.index(name_column) + 1
     new_columns = ["first_name", "last_name", "name_ascii", "slug"]
-    remaining = [col for col in df.columns if col not in new_columns]
+    remaining = [col for col in columns if col not in new_columns]
     ordered_columns = (
         remaining[:insert_after] + new_columns + remaining[insert_after:]
     )

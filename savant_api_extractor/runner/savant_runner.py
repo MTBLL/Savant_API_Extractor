@@ -3,6 +3,7 @@
 import json
 from pandas.core.frame import DataFrame
 from pathlib import Path
+from typing import Any, Hashable
 
 import pandas as pd
 
@@ -63,13 +64,14 @@ class SavantRunner:
 
         output_path = self.output_dir / f"{self.filename}.json"
 
+        json_data: list[dict[Hashable, Any]] | dict[str, list[dict[Hashable, Any]]]
         if isinstance(data, pd.DataFrame):
             # Convert DataFrame to records format
-            json_data = data.to_dict(orient="records")  # pyright: ignore[reportUnknownMemberType]
+            json_data = data.to_dict(orient="records")
         else:
             # Convert dictionary of DataFrames to nested structure
             json_data = {
-                key: df.to_dict(orient="records")  # pyright: ignore[reportUnknownMemberType]
+                key: df.to_dict(orient="records")
                 for key, df in data.items()
                 }
 
