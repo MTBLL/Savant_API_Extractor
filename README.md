@@ -1,5 +1,5 @@
 # Savant API Extractor
-![Pytest](https://github.com/MTBLL/Savant_API_Extractor/actions/workflows/pytest.yml/badge.svg)
+[![codecov](https://codecov.io/gh/MTBLL/Savant_API_Extractor/graph/badge.svg?token=B63QRXrOeQ)](https://codecov.io/gh/MTBLL/Savant_API_Extractor)
 ![Mypy](https://github.com/MTBLL/Savant_API_Extractor/actions/workflows/mypy.yml/badge.svg)
 
 ## Description
