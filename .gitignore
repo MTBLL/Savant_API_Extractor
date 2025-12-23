@@ -6,3 +6,4 @@
 dist/
 .coverage
 savant_data.json
+tmp_run/
