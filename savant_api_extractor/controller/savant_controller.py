@@ -56,8 +56,15 @@ class SavantController:
         """
         min_pas = get_min_pas(self.threshold_type, player_type)
 
+        player_type_param = {
+            ExtractionType.BATTER: "batter",
+            ExtractionType.PITCHER: "pitcher",
+        }.get(player_type)
+
+        assert player_type_param is not None, f"Unsupported player type: {player_type}"
+
         params: dict[str, str] = {
-            "player_type": player_type.value,
+            "player_type": player_type_param,
             HF_GAME_TYPE: (
                 GAME_TYPE_SPRING_TRAINING
                 if self.threshold_type == ThresholdType.SPRING_TRAINING

@@ -15,7 +15,7 @@ from savant_api_extractor.utils.thresholds import ThresholdType
 def test_runner_initialization(tmp_path: Path) -> None:
     runner = SavantRunner(
         season="2025",
-        extraction_type="batter",
+        extraction_type="batters",
         threshold_type=ThresholdType.DEFAULT,
         output_dir=tmp_path,
         output_filename="runner_output",
@@ -34,7 +34,7 @@ def test_runner_export_to_json_dataframe(
 ) -> None:
     runner = SavantRunner(
         season="2025",
-        extraction_type="batter",
+        extraction_type="batters",
         output_dir=tmp_path,
         output_filename="batters_export",
     )
@@ -56,7 +56,7 @@ def test_runner_run_batter_returns_dict(
 ) -> None:
     runner = SavantRunner(
         season="2025",
-        extraction_type="batter",
+        extraction_type="batters",
         output_dir=tmp_path,
         output_filename="batter_stats",
     )

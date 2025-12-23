@@ -30,7 +30,12 @@ class SavantRunner:
             output_dir: Directory to save output files (default: current directory)
         """
         self.logger: Logger = Logger(f"{__name__}.SavantRunner")
-        self.extraction_method: ExtractionType = ExtractionType(extraction_type.lower())
+        normalized_type = extraction_type.lower()
+        normalized_type = {
+            "batter": "batters",
+            "pitcher": "pitchers",
+        }.get(normalized_type, normalized_type)
+        self.extraction_method: ExtractionType = ExtractionType(normalized_type)
         self.threshold_type: ThresholdType = threshold_type
         self.season: str = season
 

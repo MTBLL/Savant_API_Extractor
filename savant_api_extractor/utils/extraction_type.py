@@ -4,6 +4,6 @@ from enum import Enum
 
 
 class ExtractionType(str, Enum):
-    BATTER = "batter"
-    PITCHER = "pitcher"
+    BATTER = "batters"
+    PITCHER = "pitchers"
     ALL = "all"
