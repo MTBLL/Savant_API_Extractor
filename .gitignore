@@ -1,0 +1,9 @@
+*__pycache__*
+.python-version
+.venv/
+.pytest_cache/
+.dist/
+dist/
+.coverage
+savant_data.json
+tmp_run/

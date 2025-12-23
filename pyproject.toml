@@ -1,7 +1,68 @@
 [project]
 name = "savant-api-extractor"
 version = "0.1.0"
-description = "Add your description here"
+description = "Savant API Extractor"
+authors = [
+    {"name" = "Taylor 'TP' Pubins", "email" = "tpubz@icloud.com"},
+]
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "pandas>=2.0.0",
+    "click>=8.0.0",
+    "requests>=2.31.0",
+    "pip>=25.3",
+]
+
+[project.scripts]
+savant-extract = "savant_api_extractor.__main__:main"
+
+[build-system]
+requires = ["uv_build >= 0.9.17, <0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = "."
+
+[project.optional-dependencies]
+dev = [
+    "mypy>=1.15.0",
+    "pandas-stubs>=2.0.0",
+    "pytest>=9.0.2",
+    "pytest-cov>=4.0.0",
+]
+
+[tool.mypy]
+python_version = "3.13"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[tool.coverage.run]
+omit = [
+    "savant_api_extractor/__main__.py",
+    "*/tests/*",
+    "*/test_*.py"
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if __name__ == .__main__.:",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]
