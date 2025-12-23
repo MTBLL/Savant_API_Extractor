@@ -5,3 +5,4 @@
 .dist/
 dist/
 .coverage
+savant_data.json
