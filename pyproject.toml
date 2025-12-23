@@ -21,6 +21,9 @@ savant-extract = "savant_api_extractor.__main__:main"
 requires = ["uv_build >= 0.9.17, <0.10.0"]
 build-backend = "uv_build"
 
+[tool.uv.build-backend]
+module-root = "."
+
 [project.optional-dependencies]
 dev = [
     "mypy>=1.15.0",
