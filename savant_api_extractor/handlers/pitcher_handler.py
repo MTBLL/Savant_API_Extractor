@@ -7,6 +7,7 @@ import requests
 
 from savant_api_extractor.handlers.base_handler import BaseHandler
 from savant_api_extractor.utils import PITCHER_HEADER_MAPPINGS
+from savant_api_extractor.utils.name_parser import add_name_columns
 
 
 class PitcherHandler(BaseHandler):
@@ -39,6 +40,7 @@ class PitcherHandler(BaseHandler):
             mapped_columns = set(PITCHER_HEADER_MAPPINGS.values())
             df = df[[col for col in df.columns if col in mapped_columns]]
 
+            df = add_name_columns(df)
             return df
 
         except requests.exceptions.RequestException as e:

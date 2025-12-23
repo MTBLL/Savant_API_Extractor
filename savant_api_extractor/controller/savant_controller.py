@@ -3,6 +3,7 @@
 import pandas as pd
 
 from savant_api_extractor.handlers.batter_handler import BatterHandler
+from savant_api_extractor.handlers.base_handler import BaseHandler
 from savant_api_extractor.handlers.pitcher_handler import PitcherHandler
 from savant_api_extractor.utils.extraction_type import ExtractionType
 from savant_api_extractor.utils.logger import Logger
@@ -108,6 +109,7 @@ class SavantController:
         Returns:
             DataFrame with player statistics
         """
+        handler: BaseHandler
         match player_type:
             case ExtractionType.BATTER:
                 handler = self.batter_handler

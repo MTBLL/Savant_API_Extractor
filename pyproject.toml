@@ -1,6 +1,6 @@
 [project]
 name = "savant-api-extractor"
-version = "0.1.0"
+version = "0.2.0"
 description = "Savant API Extractor"
 authors = [
     {"name" = "Taylor 'TP' Pubins", "email" = "tpubz@icloud.com"},
@@ -24,12 +24,13 @@ build-backend = "uv_build"
 [tool.uv.build-backend]
 module-root = "."
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "mypy>=1.15.0",
     "pandas-stubs>=2.0.0",
     "pytest>=9.0.2",
     "pytest-cov>=4.0.0",
+    "types-requests>=2.31.0.20240106",
 ]
 
 [tool.mypy]
