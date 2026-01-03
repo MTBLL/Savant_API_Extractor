@@ -2,6 +2,7 @@
 
 import io
 import json
+import re
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -18,14 +19,12 @@ def test_runner_initialization(tmp_path: Path) -> None:
         extraction_type="batters",
         threshold_type=ThresholdType.DEFAULT,
         output_dir=tmp_path,
-        output_filename="runner_output",
     )
 
     assert runner.extraction_method == ExtractionType.BATTER
     assert runner.threshold_type == ThresholdType.DEFAULT
     assert runner.season == "2025"
     assert runner.output_dir == tmp_path
-    assert runner.filename == "runner_output"
 
 
 def test_runner_export_to_json_dataframe(
@@ -36,14 +35,16 @@ def test_runner_export_to_json_dataframe(
         season="2025",
         extraction_type="batters",
         output_dir=tmp_path,
-        output_filename="batters_export",
     )
     df = pd.read_csv(io.StringIO(batters_fixture), low_memory=False)
 
-    output_path = runner._export_to_json(df)  # pyright: ignore[reportPrivateUsage]
+    # Export expects a dictionary, not a single DataFrame
+    output_paths = runner._export_to_json({"batters": df})  # pyright: ignore[reportPrivateUsage]
 
-    assert output_path == tmp_path / "batters_export.json"
-    data = json.loads(output_path.read_text(encoding="utf-8"))
+    assert len(output_paths) == 1
+    # Check filename matches pattern: savant_batters_YYYY_MM_DD_HHMM.json
+    assert re.match(r"savant_batters_\d{4}_\d{2}_\d{2}_\d{4}\.json", output_paths[0].name)
+    data = json.loads(output_paths[0].read_text(encoding="utf-8"))
     assert isinstance(data, list)
     assert len(data) == len(df)
     assert data[0]["player_name"] == "Judge, Aaron"
@@ -58,7 +59,6 @@ def test_runner_run_batter_returns_dict(
         season="2025",
         extraction_type="batters",
         output_dir=tmp_path,
-        output_filename="batter_stats",
     )
 
     with patch("savant_api_extractor.handlers.base_handler.requests.get") as mock_get:
@@ -73,11 +73,14 @@ def test_runner_run_batter_returns_dict(
     assert list(results.keys()) == ["batters"]
     assert results["batters"].iloc[0]["name"] == "Judge, Aaron"
 
-    output_path = tmp_path / "batter_stats.json"
-    assert output_path.exists()
-    data = json.loads(output_path.read_text(encoding="utf-8"))
-    assert "batters" in data
-    assert data["batters"][0]["name"] == "Judge, Aaron"
+    # Find the file matching pattern: savant_batters_YYYY_MM_DD_HHMM.json
+    output_files = list(tmp_path.glob("savant_batters_*.json"))
+    assert len(output_files) == 1
+    assert re.match(r"savant_batters_\d{4}_\d{2}_\d{2}_\d{4}\.json", output_files[0].name)
+
+    data = json.loads(output_files[0].read_text(encoding="utf-8"))
+    assert isinstance(data, list)
+    assert data[0]["name"] == "Judge, Aaron"
 
 
 def test_runner_run_all_exports_json(
@@ -89,7 +92,6 @@ def test_runner_run_all_exports_json(
         season="2025",
         extraction_type="all",
         output_dir=tmp_path,
-        output_filename="all_stats",
     )
 
     with patch("savant_api_extractor.handlers.base_handler.requests.get") as mock_get:
@@ -109,12 +111,21 @@ def test_runner_run_all_exports_json(
     assert results["batters"].iloc[0]["name"] == "Judge, Aaron"
     assert results["pitchers"].iloc[0]["name"] == "Marinaccio, Ron"
 
-    output_path = tmp_path / "all_stats.json"
-    assert output_path.exists()
-    data = json.loads(output_path.read_text(encoding="utf-8"))
-    assert "batters" in data
-    assert "pitchers" in data
-    assert len(data["batters"]) > 0
-    assert len(data["pitchers"]) > 0
-    assert data["batters"][0]["name"] == "Judge, Aaron"
-    assert data["pitchers"][0]["name"] == "Marinaccio, Ron"
+    # Find files matching pattern: savant_{batters|pitchers}_YYYY_MM_DD_HHMM.json
+    batters_files = list(tmp_path.glob("savant_batters_*.json"))
+    pitchers_files = list(tmp_path.glob("savant_pitchers_*.json"))
+
+    assert len(batters_files) == 1
+    assert len(pitchers_files) == 1
+    assert re.match(r"savant_batters_\d{4}_\d{2}_\d{2}_\d{4}\.json", batters_files[0].name)
+    assert re.match(r"savant_pitchers_\d{4}_\d{2}_\d{2}_\d{4}\.json", pitchers_files[0].name)
+
+    batters_data = json.loads(batters_files[0].read_text(encoding="utf-8"))
+    pitchers_data = json.loads(pitchers_files[0].read_text(encoding="utf-8"))
+
+    assert isinstance(batters_data, list)
+    assert isinstance(pitchers_data, list)
+    assert len(batters_data) > 0
+    assert len(pitchers_data) > 0
+    assert batters_data[0]["name"] == "Judge, Aaron"
+    assert pitchers_data[0]["name"] == "Marinaccio, Ron"

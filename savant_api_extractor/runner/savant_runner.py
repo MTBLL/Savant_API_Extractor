@@ -1,14 +1,11 @@
 """Runner for orchestrating the Savant API extraction process."""
 
-import json
 from pandas.core.frame import DataFrame
 from pathlib import Path
-from typing import Any, Hashable
-
-import pandas as pd
 
 from savant_api_extractor.controller.savant_controller import SavantController
 from savant_api_extractor.utils.extraction_type import ExtractionType
+from savant_api_extractor.utils.json_exporter import JSONExporter
 from savant_api_extractor.utils.logger import Logger
 from savant_api_extractor.utils.thresholds import ThresholdType
 
@@ -22,12 +19,14 @@ class SavantRunner:
         extraction_type: str,
         threshold_type: ThresholdType = ThresholdType.DEFAULT,
         output_dir: Path | None = None,
-        output_filename: str = "savant_data",
     ) -> None:
         """
         Initialize the runner.
 
         Args:
+            season: Season year (e.g., "2025")
+            extraction_type: Type of data to extract ("batters", "pitchers", "all")
+            threshold_type: Threshold type for minimum plate appearances
             output_dir: Directory to save output files (default: current directory)
         """
         self.logger: Logger = Logger(f"{__name__}.SavantRunner")
@@ -42,44 +41,23 @@ class SavantRunner:
 
         self.controller: SavantController = SavantController(threshold_type)
         self.output_dir: Path = output_dir or Path.cwd()
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.filename: str = output_filename
+        self.exporter: JSONExporter = JSONExporter(self.output_dir)
         self.logger.info(f"Runner initialized with output directory: {self.output_dir}")
 
     def _export_to_json(
         self,
-        data: pd.DataFrame | dict[str, pd.DataFrame],
-    ) -> Path:
+        data: DataFrame | dict[str, DataFrame],
+    ) -> list[Path]:
         """
-        Export data to JSON file.
+        Export data to JSON file(s) using the JSONExporter utility.
 
         Args:
             data: DataFrame or dictionary of DataFrames to export
-            filename: Output filename (without extension)
 
         Returns:
-            Path to the created JSON file
+            List of paths to the created JSON file(s)
         """
-        self.logger.info(f"Exporting data to JSON: {self.filename}")
-
-        output_path = self.output_dir / f"{self.filename}.json"
-
-        json_data: list[dict[Hashable, Any]] | dict[str, list[dict[Hashable, Any]]]
-        if isinstance(data, pd.DataFrame):
-            # Convert DataFrame to records format
-            json_data = data.to_dict(orient="records")
-        else:
-            # Convert dictionary of DataFrames to nested structure
-            json_data = {
-                key: df.to_dict(orient="records")
-                for key, df in data.items()
-                }
-
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(json_data, f, indent=2, default=str)
-
-        self.logger.info(f"Data exported to {output_path}")
-        return output_path
+        return self.exporter.export(data)
 
     def run(
         self,
