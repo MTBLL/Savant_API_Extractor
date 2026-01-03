@@ -37,11 +37,6 @@ from savant_api_extractor.utils.thresholds import ThresholdType
     help="Output directory for JSON files (default: current directory)",
 )
 @click.option(
-    "--output-filename",
-    default="savant_data",
-    help="Output filename without extension (default: savant_data)",
-)
-@click.option(
     "--type",
     "extraction_type",
     type=click.Choice(["batters", "pitchers", "all"], case_sensitive=False),
@@ -52,7 +47,6 @@ def main(
     threshold: str,
     season: str,
     output_dir: str,
-    output_filename: str,
     extraction_type: str,
 ) -> None:
     """
@@ -71,7 +65,7 @@ def main(
 
     # Initialize runner
     runner = SavantRunner(
-        season, extraction_type, threshold_type, output_dir=Path(output_dir), output_filename=output_filename
+        season, extraction_type, threshold_type, output_dir=Path(output_dir)
         )
 
     # Run extraction based on type
