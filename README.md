@@ -54,10 +54,14 @@ Example:
   "name_ascii": "Shohei Ohtani",
   "slug": "shohei-ohtani",
   "player_type": "batter",
-  "hardhit_pct": 50.0,
-  "barrels_per_bbe_pct": 22.727272727272727,
-  "barrels_per_pa_pct": 13.513513513513514,
-  "barrels_total": 15
+  "hardhit_pct": 50.72463768115942,
+  "hardhit_pct_pct_rnk": 86.4,
+  "barrels_per_bbe_pct": 21.73913043478261,
+  "barrels_per_bbe_pct_pct_rnk": 97.6,
+  "barrels_per_pa_pct": 12.93103448275862,
+  "barrels_per_pa_pct_pct_rnk": 96.9,
+  "barrels_total": 15,
+  "barrels_total_pct_rnk": 98.6
 }
 ```
 
@@ -83,3 +87,28 @@ Both batter and pitcher exports include these contact-quality fields:
 
 Percentage fields are exported on Baseball Savant's percentage scale, not as
 fractions. For example, `35.0` means 35%.
+
+### Percentile Ranks
+
+Each numeric stat field also gets a sibling percentile-rank field named
+`<stat>_pct_rnk`. For example, `hardhit_pct` gets `hardhit_pct_pct_rnk`.
+
+Percentile ranks are calculated independently per output file:
+
+- Batter ranks compare only against batter rows in `savant_batters_*.json`.
+- Pitcher ranks compare only against pitcher rows in `savant_pitchers_*.json`.
+
+Identifier and metadata fields do not get percentile ranks. Excluded fields are:
+
+- `player_id`
+- `name`
+- `first_name`
+- `last_name`
+- `name_ascii`
+- `slug`
+- `player_type`
+
+Percentile ranks use pandas average-tie percentile ranking, scaled from 0 to 100
+and rounded to one decimal place, based on the raw stat distribution. A higher
+stat value receives a higher percentile rank. Ranks are not direction-adjusted
+for whether a higher value is better for player evaluation.
