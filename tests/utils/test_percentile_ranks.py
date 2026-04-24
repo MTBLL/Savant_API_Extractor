@@ -44,3 +44,21 @@ def test_add_percentile_rank_columns_preserves_original_values() -> None:
 
     assert result["xwOBA"].to_list() == [0.300, 0.250]
     assert result["xwOBA_pct_rnk"].to_list() == pytest.approx([100.0, 50.0])
+
+
+def test_add_percentile_rank_columns_rejects_rank_column_collision() -> None:
+    df = pd.DataFrame(
+        {
+            "player_id": [1, 2],
+            "name": ["A", "B"],
+            "player_type": ["batter", "batter"],
+            "hardhit_pct": [10.0, 20.0],
+            "hardhit_pct_pct_rnk": [50.0, 100.0],
+        }
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Percentile rank column already exists: hardhit_pct_pct_rnk",
+    ):
+        add_percentile_rank_columns(df)
