@@ -86,6 +86,7 @@ def test_runner_run_batter_returns_dict(
     assert isinstance(data, list)
     assert data[0]["name"] == "Judge, Aaron"
     assert data[0]["player_type"] == "batter"
+    assert "hardhit_pct_pct_rnk" in data[0]
 
 
 def test_runner_run_all_exports_json(
@@ -138,5 +139,7 @@ def test_runner_run_all_exports_json(
     assert len(pitchers_data) > 0
     assert batters_data[0]["name"] == "Judge, Aaron"
     assert batters_data[0]["player_type"] == "batter"
+    assert "hardhit_pct_pct_rnk" in batters_data[0]
     assert pitchers_data[0]["name"] == "Marinaccio, Ron"
     assert pitchers_data[0]["player_type"] == "pitcher"
+    assert "hardhit_pct_pct_rnk" in pitchers_data[0]
