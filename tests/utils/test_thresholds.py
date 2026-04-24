@@ -1,5 +1,7 @@
 """Tests for threshold utilities."""
 
+from typing import cast
+
 import pytest
 
 from savant_api_extractor.utils.extraction_type import ExtractionType
@@ -44,3 +46,7 @@ def test_get_min_pas(
     expected: str,
 ) -> None:
     assert get_min_pas(threshold_type, player_type) == expected
+
+
+def test_get_min_pas_unknown_threshold_returns_empty_string() -> None:
+    assert get_min_pas(cast(ThresholdType, "unknown"), ExtractionType.BATTER) == ""

@@ -14,6 +14,7 @@ def test_add_percentile_rank_columns_ranks_numeric_stats() -> None:
             "player_type": ["batter", "batter", "batter"],
             "hardhit_pct": [10.0, 20.0, 20.0],
             "barrels_total": [3, 1, 2],
+            "notes": ["low", "high", "high"],
         }
     )
 
@@ -22,6 +23,7 @@ def test_add_percentile_rank_columns_ranks_numeric_stats() -> None:
     assert "player_id_pct_rnk" not in result.columns
     assert "name_pct_rnk" not in result.columns
     assert "player_type_pct_rnk" not in result.columns
+    assert "notes_pct_rnk" not in result.columns
     assert result["hardhit_pct_pct_rnk"].to_list() == pytest.approx(
         [33.3, 83.3, 83.3]
     )
