@@ -43,7 +43,9 @@ def test_runner_export_to_json_dataframe(
 
     assert len(output_paths) == 1
     # Check filename matches pattern: savant_batters_YYYY_MM_DD_HHMM.json
-    assert re.match(r"savant_batters_\d{4}_\d{2}_\d{2}_\d{4}\.json", output_paths[0].name)
+    assert re.match(
+        r"savant_batters_\d{4}_\d{2}_\d{2}_\d{4}\.json", output_paths[0].name
+    )
     data = json.loads(output_paths[0].read_text(encoding="utf-8"))
     assert isinstance(data, list)
     assert len(data) == len(df)
@@ -76,11 +78,14 @@ def test_runner_run_batter_returns_dict(
     # Find the file matching pattern: savant_batters_YYYY_MM_DD_HHMM.json
     output_files = list(tmp_path.glob("savant_batters_*.json"))
     assert len(output_files) == 1
-    assert re.match(r"savant_batters_\d{4}_\d{2}_\d{2}_\d{4}\.json", output_files[0].name)
+    assert re.match(
+        r"savant_batters_\d{4}_\d{2}_\d{2}_\d{4}\.json", output_files[0].name
+    )
 
     data = json.loads(output_files[0].read_text(encoding="utf-8"))
     assert isinstance(data, list)
     assert data[0]["name"] == "Judge, Aaron"
+    assert data[0]["player_type"] == "batter"
 
 
 def test_runner_run_all_exports_json(
@@ -117,8 +122,12 @@ def test_runner_run_all_exports_json(
 
     assert len(batters_files) == 1
     assert len(pitchers_files) == 1
-    assert re.match(r"savant_batters_\d{4}_\d{2}_\d{2}_\d{4}\.json", batters_files[0].name)
-    assert re.match(r"savant_pitchers_\d{4}_\d{2}_\d{2}_\d{4}\.json", pitchers_files[0].name)
+    assert re.match(
+        r"savant_batters_\d{4}_\d{2}_\d{2}_\d{4}\.json", batters_files[0].name
+    )
+    assert re.match(
+        r"savant_pitchers_\d{4}_\d{2}_\d{2}_\d{4}\.json", pitchers_files[0].name
+    )
 
     batters_data = json.loads(batters_files[0].read_text(encoding="utf-8"))
     pitchers_data = json.loads(pitchers_files[0].read_text(encoding="utf-8"))
@@ -128,4 +137,6 @@ def test_runner_run_all_exports_json(
     assert len(batters_data) > 0
     assert len(pitchers_data) > 0
     assert batters_data[0]["name"] == "Judge, Aaron"
+    assert batters_data[0]["player_type"] == "batter"
     assert pitchers_data[0]["name"] == "Marinaccio, Ron"
+    assert pitchers_data[0]["player_type"] == "pitcher"

@@ -1,5 +1,6 @@
 """CLI entry point for Savant API Extractor."""
 
+from datetime import datetime
 from pathlib import Path
 
 import click
@@ -27,8 +28,8 @@ from savant_api_extractor.utils.thresholds import ThresholdType
 @click.option(
     "--season",
     type=str,
-    default="2025",
-    help="Season year (e.g., '2025'). If not provided, uses API defaults.",
+    default=None,
+    help="Season year (e.g., '2025'). If omitted, uses the current year.",
 )
 @click.option(
     "--output-dir",
@@ -45,7 +46,7 @@ from savant_api_extractor.utils.thresholds import ThresholdType
 )
 def main(
     threshold: str,
-    season: str,
+    season: str | None,
     output_dir: str,
     extraction_type: str,
 ) -> None:
@@ -62,11 +63,12 @@ def main(
 
     # Convert threshold string to enum
     threshold_type = ThresholdType(threshold.lower())
+    resolved_season = season or str(datetime.now().year)
 
     # Initialize runner
     runner = SavantRunner(
-        season, extraction_type, threshold_type, output_dir=Path(output_dir)
-        )
+        resolved_season, extraction_type, threshold_type, output_dir=Path(output_dir)
+    )
 
     # Run extraction based on type
     try:

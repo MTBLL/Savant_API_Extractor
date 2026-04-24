@@ -41,6 +41,8 @@ class BatterHandler(BaseHandler):
             df = df[[col for col in df.columns if col in mapped_columns]]
 
             df = add_name_columns(df)
+            slug_index = df.columns.to_list().index("slug")
+            df.insert(slug_index + 1, "player_type", "batter")
             return df
 
         except requests.exceptions.RequestException as e:
