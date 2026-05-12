@@ -71,8 +71,10 @@ def test_runner_run_batter_returns_dict(
 
         results = runner.run()
 
-    assert mock_get.call_count == 1
+    # 3 calls per player_type: overall + vs RHP + vs LHP
+    assert mock_get.call_count == 3
     assert list(results.keys()) == ["batters"]
+    assert set(results["batters"]["opp_hand"].unique()) == {"all", "R", "L"}
     assert results["batters"].iloc[0]["name"] == "Judge, Aaron"
 
     # Find the file matching pattern: savant_batters_YYYY_MM_DD_HHMM.json
@@ -86,7 +88,10 @@ def test_runner_run_batter_returns_dict(
     assert isinstance(data, list)
     assert data[0]["name"] == "Judge, Aaron"
     assert data[0]["player_type"] == "batter"
+    assert "opp_hand" in data[0]
     assert "hardhit_pct_pct_rnk" in data[0]
+    assert "opp_hand_pct_rnk" not in data[0]
+    assert {row["opp_hand"] for row in data} == {"all", "R", "L"}
 
 
 def test_runner_run_all_exports_json(
@@ -101,19 +106,29 @@ def test_runner_run_all_exports_json(
     )
 
     with patch("savant_api_extractor.handlers.base_handler.requests.get") as mock_get:
-        batter_response = MagicMock()
-        batter_response.text = batters_fixture
-        batter_response.raise_for_status = MagicMock()
-        pitcher_response = MagicMock()
-        pitcher_response.text = pitchers_fixture
-        pitcher_response.raise_for_status = MagicMock()
-        mock_get.side_effect = [batter_response, pitcher_response]
+        def make_response(text: str) -> MagicMock:
+            r = MagicMock()
+            r.text = text
+            r.raise_for_status = MagicMock()
+            return r
+
+        # 3 batter calls (all/R/L) then 3 pitcher calls (all/R/L)
+        mock_get.side_effect = [
+            make_response(batters_fixture),
+            make_response(batters_fixture),
+            make_response(batters_fixture),
+            make_response(pitchers_fixture),
+            make_response(pitchers_fixture),
+            make_response(pitchers_fixture),
+        ]
 
         results = runner.run()
 
-    assert mock_get.call_count == 2
+    assert mock_get.call_count == 6
     assert "batters" in results
     assert "pitchers" in results
+    assert set(results["batters"]["opp_hand"].unique()) == {"all", "R", "L"}
+    assert set(results["pitchers"]["opp_hand"].unique()) == {"all", "R", "L"}
     assert results["batters"].iloc[0]["name"] == "Judge, Aaron"
     assert results["pitchers"].iloc[0]["name"] == "Marinaccio, Ron"
 

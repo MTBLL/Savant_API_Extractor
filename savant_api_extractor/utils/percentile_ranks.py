@@ -15,6 +15,7 @@ NON_STAT_COLUMNS = frozenset(
         "name_ascii",
         "slug",
         "player_type",
+        "opp_hand",
     }
 )
 

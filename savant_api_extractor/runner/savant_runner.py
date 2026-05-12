@@ -1,9 +1,13 @@
 """Runner for orchestrating the Savant API extraction process."""
 
+import pandas as pd
 from pandas.core.frame import DataFrame
 from pathlib import Path
 
-from savant_api_extractor.controller.savant_controller import SavantController
+from savant_api_extractor.controller.savant_controller import (
+    OPP_HAND_SPLITS,
+    SavantController,
+)
 from savant_api_extractor.utils.extraction_type import ExtractionType
 from savant_api_extractor.utils.json_exporter import JSONExporter
 from savant_api_extractor.utils.logger import Logger
@@ -84,12 +88,15 @@ class SavantRunner:
         else:
             extraction_types = [self.extraction_method]
 
-        results = {
-            extraction_map[extraction_type]: self.controller.extract(
-                extraction_type, self.season
+        results: dict[str, DataFrame] = {}
+        for extraction_type in extraction_types:
+            split_frames = [
+                self.controller.extract(extraction_type, self.season, opp_hand=h)
+                for h in OPP_HAND_SPLITS
+            ]
+            results[extraction_map[extraction_type]] = pd.concat(
+                split_frames, ignore_index=True
             )
-            for extraction_type in extraction_types
-        }
 
         self._export_to_json(results)
         return results
