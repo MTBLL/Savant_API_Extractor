@@ -8,3 +8,4 @@ dist/
 savant_data.json
 tmp_run/
 .temp/
+.tmp
