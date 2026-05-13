@@ -60,22 +60,18 @@ class TestBatterHandler:
         assert first_row["slug"] == "aaron-judge"
         assert first_row["player_type"] == "batter"
         assert first_row["player_id"] == 592450
-        assert "player_id_pct_rnk" not in df.columns
         assert "hardhit_pct" in df.columns
-        assert "hardhit_pct_pct_rnk" in df.columns
         assert "barrels_per_bbe_pct" in df.columns
-        assert "barrels_per_bbe_pct_pct_rnk" in df.columns
         assert "barrels_per_pa_pct" in df.columns
-        assert "barrels_per_pa_pct_pct_rnk" in df.columns
+        # Percentile-rank columns are no longer emitted at extract time —
+        # consumers compute them downstream against their own cohort.
+        assert not any(col.endswith("_pct_rnk") for col in df.columns)
 
         ohtani = df.loc[df["name"] == "Ohtani, Shohei"].iloc[0]
         assert ohtani["player_type"] == "batter"
         assert ohtani["hardhit_pct"] == pytest.approx(58.68544600938967)
-        assert 0 < ohtani["hardhit_pct_pct_rnk"] <= 100
         assert ohtani["barrels_per_bbe_pct"] == pytest.approx(23.474178403755868)
-        assert 0 < ohtani["barrels_per_bbe_pct_pct_rnk"] <= 100
         assert ohtani["barrels_per_pa_pct"] == pytest.approx(13.75515818431912)
-        assert 0 < ohtani["barrels_per_pa_pct_pct_rnk"] <= 100
 
         # Check second row
         if len(df) > 1:
@@ -144,22 +140,18 @@ class TestPitcherHandler:
         assert first_row["name_ascii"] == "Ron Marinaccio"
         assert first_row["slug"] == "ron-marinaccio"
         assert first_row["player_type"] == "pitcher"
-        assert "player_id_pct_rnk" not in df.columns
         assert "hardhit_pct" in df.columns
-        assert "hardhit_pct_pct_rnk" in df.columns
         assert "barrels_per_bbe_pct" in df.columns
-        assert "barrels_per_bbe_pct_pct_rnk" in df.columns
         assert "barrels_per_pa_pct" in df.columns
-        assert "barrels_per_pa_pct_pct_rnk" in df.columns
+        # Percentile-rank columns are no longer emitted at extract time —
+        # consumers compute them downstream against their own cohort.
+        assert not any(col.endswith("_pct_rnk") for col in df.columns)
 
         ohtani = df.loc[df["name"] == "Ohtani, Shohei"].iloc[0]
         assert ohtani["player_type"] == "pitcher"
         assert ohtani["hardhit_pct"] == pytest.approx(31.03448275862069)
-        assert 0 < ohtani["hardhit_pct_pct_rnk"] <= 100
         assert ohtani["barrels_per_bbe_pct"] == pytest.approx(3.4482758620689653)
-        assert 0 < ohtani["barrels_per_bbe_pct_pct_rnk"] <= 100
         assert ohtani["barrels_per_pa_pct"] == pytest.approx(2.13903743315508)
-        assert 0 < ohtani["barrels_per_pa_pct_pct_rnk"] <= 100
         mock_get.assert_called_once()
 
     @patch("savant_api_extractor.handlers.pitcher_handler.requests.get")

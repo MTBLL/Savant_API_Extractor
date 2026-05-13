@@ -8,7 +8,6 @@ import requests
 from savant_api_extractor.handlers.base_handler import BaseHandler
 from savant_api_extractor.utils import PITCHER_HEADER_MAPPINGS
 from savant_api_extractor.utils.name_parser import add_name_columns
-from savant_api_extractor.utils.percentile_ranks import add_percentile_rank_columns
 
 
 class PitcherHandler(BaseHandler):
@@ -50,7 +49,7 @@ class PitcherHandler(BaseHandler):
             slug_index = df.columns.to_list().index("slug")
             df.insert(slug_index + 1, "player_type", "pitcher")
             df.insert(slug_index + 2, "opp_hand", opp_hand)
-            return add_percentile_rank_columns(df)
+            return df
 
         except requests.exceptions.RequestException as e:
             self.logger.error(f"Error fetching pitcher data: {e}")

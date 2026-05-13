@@ -120,37 +120,46 @@ Both batter and pitcher exports include these contact-quality fields:
 Percentage fields are exported on Baseball Savant's percentage scale, not as
 fractions. For example, `35.0` means 35%.
 
-### Percentile Ranks
+### Percentile Ranks (computed downstream, not at extract time)
 
-Each numeric stat field also gets a sibling percentile-rank field named
-`<stat>_pct_rnk`. For example, `hardhit_pct` gets `hardhit_pct_pct_rnk`.
+The extractor emits **raw stat values only**. Percentile ranks are no longer
+applied at extract time — they're only meaningful relative to the cohort
+they're computed against, and the right cohort depends on the consumer:
 
-Percentile ranks are calculated **within-cohort**, meaning ranks are scoped to
-the combination of role *and* handedness split:
+- A fantasy analytics app should compute percentiles against its rostered
+  player set (typically ~250 hitters / ~150 pitchers), not against Savant's
+  full qualified cohort (~600 players).
+- A scouting tool comparing prospects to league-wide benchmarks would want
+  the opposite — ranks against the full Savant cohort.
 
-- Batter `"all"` ranks compare only against other batter `"all"` rows.
-- Batter `"R"` ranks compare only against other batter `"R"` rows.
-- Batter `"L"` ranks compare only against other batter `"L"` rows.
-- Pitcher cohorts are scoped analogously.
+Computing ranks at extract time would lock all downstream consumers to one
+cohort definition. Cohort mismatch inverts the rank signal at the tails (a
+90th-percentile fantasy hitter looks like a 75th-percentile MLB hitter, and
+vice versa). So this extractor's job is now to produce raw values; consumers
+compute their own ranks.
 
-Because split rows are emitted without a `min_pas` threshold, split-cohort
-percentile ranks include thin-sample players. Treat split percentile ranks as
-indicative rather than authoritative until you filter on a meaningful PA
-threshold downstream.
+The `add_percentile_rank_columns` utility used in earlier versions of this
+extractor remains exported for downstream use. Import and apply it after
+filtering to your cohort of interest:
 
-Identifier and metadata fields do not get percentile ranks. Excluded fields
-are:
+```python
+import pandas as pd
+from savant_api_extractor.utils.percentile_ranks import add_percentile_rank_columns
 
-- `player_id`
-- `name`
-- `first_name`
-- `last_name`
-- `name_ascii`
-- `slug`
-- `player_type`
-- `opp_hand`
+# Load the extractor output and filter to your fantasy cohort:
+batters = pd.read_json("savant_batters_2025_10_01_1200.json")
+overall = batters[batters["opp_hand"] == "all"]
+rostered = overall[overall["player_id"].isin(my_fantasy_player_ids)]
 
-Percentile ranks use pandas average-tie percentile ranking, scaled from 0 to 100
-and rounded to one decimal place, based on the raw stat distribution. A higher
-stat value receives a higher percentile rank. Ranks are not direction-adjusted
-for whether a higher value is better for player evaluation.
+# Then rank within that cohort:
+ranked = add_percentile_rank_columns(rostered)
+# Adds `<stat>_pct_rnk` columns for every numeric stat field.
+```
+
+The function uses pandas average-tie percentile ranking, scaled 0–100 and
+rounded to one decimal place. A higher raw stat value receives a higher
+percentile rank — ranks are not direction-adjusted for whether higher is
+better for player evaluation. Identifier and metadata columns (`player_id`,
+`name`, `first_name`, `last_name`, `name_ascii`, `slug`, `player_type`,
+`opp_hand`) are excluded from ranking by default; pass a custom
+`excluded_columns` argument to override.

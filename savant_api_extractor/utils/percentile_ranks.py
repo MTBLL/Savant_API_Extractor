@@ -49,8 +49,12 @@ def add_percentile_rank_columns(
 ) -> pd.DataFrame:
     """Add a percentile-rank field for each numeric stat column.
 
-    Ranks are calculated within the provided DataFrame, so callers should pass
-    role-specific batter or pitcher frames rather than mixed-role data.
+    Ranks are calculated within the provided DataFrame. Callers should
+    pre-filter to the cohort they want to rank against (e.g., role-specific
+    rows, or a fantasy-relevant subset of rostered players) before calling
+    this function. The extractor itself no longer applies percentile ranks
+    at extract time — this utility exists for downstream consumers to apply
+    against their own cohort.
     """
     ranked_df = df.copy()
 

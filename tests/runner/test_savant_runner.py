@@ -89,8 +89,8 @@ def test_runner_run_batter_returns_dict(
     assert data[0]["name"] == "Judge, Aaron"
     assert data[0]["player_type"] == "batter"
     assert "opp_hand" in data[0]
-    assert "hardhit_pct_pct_rnk" in data[0]
-    assert "opp_hand_pct_rnk" not in data[0]
+    # Percentile-rank columns are no longer emitted at extract time.
+    assert not any(k.endswith("_pct_rnk") for k in data[0].keys())
     assert {row["opp_hand"] for row in data} == {"all", "R", "L"}
 
 
@@ -154,7 +154,8 @@ def test_runner_run_all_exports_json(
     assert len(pitchers_data) > 0
     assert batters_data[0]["name"] == "Judge, Aaron"
     assert batters_data[0]["player_type"] == "batter"
-    assert "hardhit_pct_pct_rnk" in batters_data[0]
     assert pitchers_data[0]["name"] == "Marinaccio, Ron"
     assert pitchers_data[0]["player_type"] == "pitcher"
-    assert "hardhit_pct_pct_rnk" in pitchers_data[0]
+    # Percentile-rank columns are no longer emitted at extract time.
+    assert not any(k.endswith("_pct_rnk") for k in batters_data[0].keys())
+    assert not any(k.endswith("_pct_rnk") for k in pitchers_data[0].keys())
