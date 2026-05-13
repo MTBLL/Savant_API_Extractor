@@ -97,3 +97,15 @@ def pitchers_split_fixtures(
         "R": pitchers_vs_R_fixture,
         "L": pitchers_vs_L_fixture,
     }
+
+
+# Leaderboard fixtures — one CSV per ETL-tier leaderboard config, keyed by
+# `config.name` so tests can look up the right fixture for whichever config
+# they're exercising.
+@pytest.fixture
+def leaderboard_fixtures(fixtures_dir: Path) -> dict[str, str]:
+    leaderboards_dir = fixtures_dir / "leaderboards"
+    return {
+        path.stem: path.read_text()
+        for path in sorted(leaderboards_dir.glob("*.csv"))
+    }

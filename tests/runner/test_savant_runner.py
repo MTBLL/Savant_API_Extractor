@@ -4,10 +4,13 @@ import io
 import json
 import re
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
+import pytest
 
+from savant_api_extractor.leaderboards import ETL_TIER_CONFIGS
 from savant_api_extractor.runner.savant_runner import SavantRunner
 from savant_api_extractor.utils.extraction_type import ExtractionType
 from savant_api_extractor.utils.thresholds import ThresholdType
@@ -19,6 +22,65 @@ def _csv_response(text: str) -> MagicMock:
     r.text = text
     r.raise_for_status = MagicMock()
     return r
+
+
+def _build_url_router(
+    splits_fixtures: dict[str, dict[str, str]],
+    leaderboard_fixtures: dict[str, str],
+):
+    """Return a callable suitable for `mock_get.side_effect` that routes by URL.
+
+    Used for tests where calls are made in non-deterministic order (the
+    leaderboard pulls happen in parallel via ThreadPoolExecutor, so we can't
+    rely on a fixed `side_effect` list).
+
+    Args:
+        splits_fixtures: e.g. {"batter": batters_split_fixtures,
+                               "pitcher": pitchers_split_fixtures}
+        leaderboard_fixtures: dict of {config.name: csv_text}
+    """
+    # Map leaderboard slug → config.name to look up the right fixture
+    slug_to_name: dict[tuple[str, frozenset[tuple[str, str]]], str] = {}
+    for cfg in ETL_TIER_CONFIGS:
+        # Distinguish configs sharing a url_path (statcast batter vs pitcher)
+        # by the union of their default_params (type/player_type).
+        key = (cfg.url_path, frozenset(cfg.default_params.items()))
+        slug_to_name[key] = cfg.name
+
+    def _route(url: str, params: dict[str, Any] | None = None, **_: Any) -> MagicMock:
+        params = params or {}
+        if "statcast_search/csv" in url:
+            player_type = params.get("player_type", "batter")
+            role = "batter" if player_type == "batter" else "pitcher"
+            if params.get("pitcher_throws") == "R" or params.get("batter_stands") == "R":
+                opp = "R"
+            elif params.get("pitcher_throws") == "L" or params.get("batter_stands") == "L":
+                opp = "L"
+            else:
+                opp = "all"
+            return _csv_response(splits_fixtures[role][opp])
+
+        if "/leaderboard/" in url:
+            slug = url.rsplit("/", 1)[-1]
+            # Match by (slug, default_params) — strip `csv` + per-call overrides
+            relevant = {
+                k: v
+                for k, v in params.items()
+                if k not in {"csv", "year"}
+            }
+            # Find config whose default_params match this subset
+            for (cfg_slug, cfg_params), cfg_name in slug_to_name.items():
+                if cfg_slug != slug:
+                    continue
+                if dict(cfg_params) == relevant:
+                    return _csv_response(leaderboard_fixtures[cfg_name])
+            raise AssertionError(
+                f"No leaderboard fixture matches {url!r} params={relevant}"
+            )
+
+        raise AssertionError(f"Unexpected URL in test mock: {url}")
+
+    return _route
 
 
 def test_runner_initialization(tmp_path: Path) -> None:
@@ -71,6 +133,7 @@ def test_runner_run_batter_returns_dict(
         season="2026",
         extraction_type="batters",
         output_dir=tmp_path,
+        include_leaderboards=False,  # focus this test on splits behavior
     )
 
     with patch("savant_api_extractor.handlers.base_handler.requests.get") as mock_get:
@@ -121,6 +184,7 @@ def test_runner_run_all_exports_json(
         season="2026",
         extraction_type="all",
         output_dir=tmp_path,
+        include_leaderboards=False,  # focus this test on splits behavior
     )
 
     with patch("savant_api_extractor.handlers.base_handler.requests.get") as mock_get:
@@ -172,6 +236,107 @@ def test_runner_run_all_exports_json(
     assert not any(k.endswith("_pct_rnk") for k in pitchers_data[0].keys())
 
 
+def test_runner_run_all_with_leaderboards(
+    tmp_path: Path,
+    batters_split_fixtures: dict[str, str],
+    pitchers_split_fixtures: dict[str, str],
+    leaderboard_fixtures: dict[str, str],
+) -> None:
+    """End-to-end: 6 split calls + 8 leaderboard calls → 10 output files."""
+    runner = SavantRunner(
+        season="2026",
+        extraction_type="all",
+        output_dir=tmp_path,
+        include_leaderboards=True,
+    )
+
+    router = _build_url_router(
+        splits_fixtures={
+            "batter": batters_split_fixtures,
+            "pitcher": pitchers_split_fixtures,
+        },
+        leaderboard_fixtures=leaderboard_fixtures,
+    )
+
+    with patch(
+        "savant_api_extractor.handlers.base_handler.requests.get",
+        side_effect=router,
+    ) as mock_get:
+        results = runner.run()
+
+    # 6 split calls + 7 leaderboard calls (expected_statistics_batter shed
+    # — its columns are now in the batter splits export via SHARED_HEADER_MAPPING)
+    assert mock_get.call_count == 6 + len(ETL_TIER_CONFIGS)
+
+    # Results dict has 2 split keys + 8 leaderboard keys
+    expected_keys = {"batters", "pitchers"} | {c.name for c in ETL_TIER_CONFIGS}
+    assert set(results.keys()) == expected_keys
+
+    # One output file per result key
+    for key in expected_keys:
+        files = list(tmp_path.glob(f"savant_{key}_*.json"))
+        assert len(files) == 1, f"expected one file for {key}, got {files}"
+
+    # Spot-check leaderboard outputs round-trip cleanly
+    statcast_batter_file = next(tmp_path.glob("savant_statcast_batter_*.json"))
+    statcast_batter_rows = json.loads(statcast_batter_file.read_text())
+    assert isinstance(statcast_batter_rows, list)
+    assert len(statcast_batter_rows) > 0
+    assert any(row["name"] == "Ohtani, Shohei" for row in statcast_batter_rows)
+
+    # Pitch-arsenal-stats is long-format on pitch_type
+    pas_file = next(tmp_path.glob("savant_pitch_arsenal_stats_batter_*.json"))
+    pas_rows = json.loads(pas_file.read_text())
+    ohtani_pas = [r for r in pas_rows if r["name"] == "Ohtani, Shohei"]
+    assert len(ohtani_pas) > 1  # multiple pitch types faced
+
+
+def test_runner_leaderboard_failure_logs_and_reraises(
+    tmp_path: Path,
+    batters_split_fixtures: dict[str, str],
+    pitchers_split_fixtures: dict[str, str],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """When a leaderboard pull fails, the runner logs which one failed and re-raises.
+
+    Exercises `_extract_leaderboards`'s exception path (the `try/except Exception
+    as e` block around `future.result()`). The split calls succeed normally; the
+    leaderboard handler is patched to raise on the first call, simulating a Savant
+    outage / parse failure for one of the leaderboards.
+    """
+    runner = SavantRunner(
+        season="2026",
+        extraction_type="all",
+        output_dir=tmp_path,
+        include_leaderboards=True,
+    )
+
+    with patch(
+        "savant_api_extractor.handlers.base_handler.requests.get"
+    ) as mock_get, patch.object(
+        runner.leaderboard_handler,
+        "extract",
+        side_effect=RuntimeError("simulated leaderboard failure"),
+    ):
+        mock_get.side_effect = [
+            _csv_response(batters_split_fixtures["all"]),
+            _csv_response(batters_split_fixtures["R"]),
+            _csv_response(batters_split_fixtures["L"]),
+            _csv_response(pitchers_split_fixtures["all"]),
+            _csv_response(pitchers_split_fixtures["R"]),
+            _csv_response(pitchers_split_fixtures["L"]),
+        ]
+
+        with pytest.raises(RuntimeError, match="simulated leaderboard failure"):
+            runner.run()
+
+    # The runner logged which leaderboard failed before re-raising
+    assert any(
+        "failed: simulated leaderboard failure" in record.message
+        for record in caplog.records
+    ), f"expected failure log line; got records: {[r.message for r in caplog.records]}"
+
+
 def test_runner_split_invariant_R_L_subset_of_all(
     tmp_path: Path,
     batters_split_fixtures: dict[str, str],
@@ -182,12 +347,15 @@ def test_runner_split_invariant_R_L_subset_of_all(
     Before the threshold fix, this could fail silently — sub-threshold
     players appeared in R/L (ungated) but not in `all` (gated at min_pas=30),
     breaking downstream joins. Asserting the invariant here pins it as a
-    structural guarantee.
+    structural guarantee. Scoped to splits behavior via
+    `include_leaderboards=False` — leaderboard pulls are orthogonal to the
+    split invariant being verified here.
     """
     runner = SavantRunner(
         season="2026",
         extraction_type="all",
         output_dir=tmp_path,
+        include_leaderboards=False,
     )
     with patch("savant_api_extractor.handlers.base_handler.requests.get") as mock_get:
         mock_get.side_effect = [

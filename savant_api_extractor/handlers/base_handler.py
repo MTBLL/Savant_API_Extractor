@@ -24,10 +24,15 @@ class BaseHandler(ABC):
         self.logger = Logger(f"{__name__}.{name}")
         self.name = name
 
-    def get_dataframe(self, query_params: Dict[str, Any]) -> pd.DataFrame:
-        self.logger.debug(f"Query params: {query_params}")
+    def get_dataframe(
+        self,
+        query_params: Dict[str, Any],
+        url: str | None = None,
+    ) -> pd.DataFrame:
+        target_url = url or self.BASE_URL
+        self.logger.debug(f"GET {target_url} params: {query_params}")
         # Make API request
-        response = requests.get(self.BASE_URL, params=query_params, timeout=30)
+        response = requests.get(target_url, params=query_params, timeout=30)
         response.raise_for_status()
 
         # Read CSV from response
