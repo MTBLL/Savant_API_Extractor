@@ -18,9 +18,9 @@ def load_fixture(fixtures_dir: Path) -> Callable[[str], str]:
 @pytest.fixture
 def batters_fixture(load_fixture: Callable[[str], str]) -> str:
     """Load the batters fixture."""
-    return load_fixture("batters_fixture.txt")
+    return load_fixture("batters_fixture.csv")
 
 @pytest.fixture
 def pitchers_fixture(load_fixture: Callable[[str], str]) -> str:
     """Load the pitchers fixture."""
-    return load_fixture("pitchers_fixture.txt")
+    return load_fixture("pitchers_fixture.csv")

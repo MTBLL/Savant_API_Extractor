@@ -130,7 +130,7 @@ def test_runner_run_all_exports_json(
     assert set(results["batters"]["opp_hand"].unique()) == {"all", "R", "L"}
     assert set(results["pitchers"]["opp_hand"].unique()) == {"all", "R", "L"}
     assert results["batters"].iloc[0]["name"] == "Judge, Aaron"
-    assert results["pitchers"].iloc[0]["name"] == "Marinaccio, Ron"
+    assert results["pitchers"].iloc[0]["name"] == "Harvey, Hunter"
 
     # Find files matching pattern: savant_{batters|pitchers}_YYYY_MM_DD_HHMM.json
     batters_files = list(tmp_path.glob("savant_batters_*.json"))
@@ -154,7 +154,7 @@ def test_runner_run_all_exports_json(
     assert len(pitchers_data) > 0
     assert batters_data[0]["name"] == "Judge, Aaron"
     assert batters_data[0]["player_type"] == "batter"
-    assert pitchers_data[0]["name"] == "Marinaccio, Ron"
+    assert pitchers_data[0]["name"] == "Harvey, Hunter"
     assert pitchers_data[0]["player_type"] == "pitcher"
     # Percentile-rank columns are no longer emitted at extract time.
     assert not any(k.endswith("_pct_rnk") for k in batters_data[0].keys())

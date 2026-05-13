@@ -134,11 +134,11 @@ class TestPitcherHandler:
             "slug",
         ]
         first_row = df.iloc[0]
-        assert first_row["name"] == "Marinaccio, Ron"
-        assert first_row["first_name"] == "Ron"
-        assert first_row["last_name"] == "Marinaccio"
-        assert first_row["name_ascii"] == "Ron Marinaccio"
-        assert first_row["slug"] == "ron-marinaccio"
+        assert first_row["name"] == "Harvey, Hunter"
+        assert first_row["first_name"] == "Hunter"
+        assert first_row["last_name"] == "Harvey"
+        assert first_row["name_ascii"] == "Hunter Harvey"
+        assert first_row["slug"] == "hunter-harvey"
         assert first_row["player_type"] == "pitcher"
         assert "hardhit_pct" in df.columns
         assert "barrels_per_bbe_pct" in df.columns
