@@ -8,6 +8,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
+import pytest
 
 from savant_api_extractor.leaderboards import ETL_TIER_CONFIGS
 from savant_api_extractor.runner.savant_runner import SavantRunner
@@ -287,6 +288,52 @@ def test_runner_run_all_with_leaderboards(
     pas_rows = json.loads(pas_file.read_text())
     ohtani_pas = [r for r in pas_rows if r["name"] == "Ohtani, Shohei"]
     assert len(ohtani_pas) > 1  # multiple pitch types faced
+
+
+def test_runner_leaderboard_failure_logs_and_reraises(
+    tmp_path: Path,
+    batters_split_fixtures: dict[str, str],
+    pitchers_split_fixtures: dict[str, str],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """When a leaderboard pull fails, the runner logs which one failed and re-raises.
+
+    Exercises `_extract_leaderboards`'s exception path (the `try/except Exception
+    as e` block around `future.result()`). The split calls succeed normally; the
+    leaderboard handler is patched to raise on the first call, simulating a Savant
+    outage / parse failure for one of the leaderboards.
+    """
+    runner = SavantRunner(
+        season="2026",
+        extraction_type="all",
+        output_dir=tmp_path,
+        include_leaderboards=True,
+    )
+
+    with patch(
+        "savant_api_extractor.handlers.base_handler.requests.get"
+    ) as mock_get, patch.object(
+        runner.leaderboard_handler,
+        "extract",
+        side_effect=RuntimeError("simulated leaderboard failure"),
+    ):
+        mock_get.side_effect = [
+            _csv_response(batters_split_fixtures["all"]),
+            _csv_response(batters_split_fixtures["R"]),
+            _csv_response(batters_split_fixtures["L"]),
+            _csv_response(pitchers_split_fixtures["all"]),
+            _csv_response(pitchers_split_fixtures["R"]),
+            _csv_response(pitchers_split_fixtures["L"]),
+        ]
+
+        with pytest.raises(RuntimeError, match="simulated leaderboard failure"):
+            runner.run()
+
+    # The runner logged which leaderboard failed before re-raising
+    assert any(
+        "failed: simulated leaderboard failure" in record.message
+        for record in caplog.records
+    ), f"expected failure log line; got records: {[r.message for r in caplog.records]}"
 
 
 def test_runner_split_invariant_R_L_subset_of_all(
