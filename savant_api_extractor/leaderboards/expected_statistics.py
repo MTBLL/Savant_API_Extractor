@@ -1,7 +1,11 @@
-"""Configs for `/leaderboard/expected_statistics` — Statcast x-stats.
+"""Config for `/leaderboard/expected_statistics?type=pitcher` — pitcher x-stats.
 
-Pitcher variant adds three ERA columns absent from the batter variant
-(`era`, `xera`, `era_minus_xera_diff`); otherwise identical shape.
+The batter variant of this endpoint was dropped from ETL — every column it
+provided is also returned by the `statcast_search` endpoint that feeds the
+batter splits, so the leaderboard pull was redundant. The pitcher variant
+is kept because it's the only source of `xERA` / `xERAdiff` in the entire
+Savant catalog, which are the strongest single Statcast predictors of
+fantasy ERA.
 """
 
 from __future__ import annotations
@@ -9,7 +13,7 @@ from __future__ import annotations
 from savant_api_extractor.leaderboards._config import LeaderboardConfig
 
 
-_BATTER_HEADER_MAPPINGS = {
+_PITCHER_HEADER_MAPPINGS = {
     "last_name, first_name": "name",
     "player_id": "player_id",
     "year": "year",
@@ -24,24 +28,10 @@ _BATTER_HEADER_MAPPINGS = {
     "woba": "wOBA",
     "est_woba": "xwOBA",
     "est_woba_minus_woba_diff": "wOBAdiff",
-}
-
-
-_PITCHER_HEADER_MAPPINGS = {
-    **_BATTER_HEADER_MAPPINGS,
     "era": "ERA",
     "xera": "xERA",
     "era_minus_xera_diff": "xERAdiff",
 }
-
-
-BATTER = LeaderboardConfig(
-    name="expected_statistics_batter",
-    url_path="expected_statistics",
-    default_params={"type": "batter"},
-    header_mappings=_BATTER_HEADER_MAPPINGS,
-    identity_columns=("player_id", "year"),
-)
 
 
 PITCHER = LeaderboardConfig(

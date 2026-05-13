@@ -264,8 +264,9 @@ def test_runner_run_all_with_leaderboards(
     ) as mock_get:
         results = runner.run()
 
-    # 6 split calls + 8 leaderboard calls
-    assert mock_get.call_count == 14
+    # 6 split calls + 7 leaderboard calls (expected_statistics_batter shed
+    # — its columns are now in the batter splits export via SHARED_HEADER_MAPPING)
+    assert mock_get.call_count == 6 + len(ETL_TIER_CONFIGS)
 
     # Results dict has 2 split keys + 8 leaderboard keys
     expected_keys = {"batters", "pitchers"} | {c.name for c in ETL_TIER_CONFIGS}

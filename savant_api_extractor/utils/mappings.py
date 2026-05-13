@@ -4,6 +4,8 @@ SHARED_HEADER_MAPPING = {
     "pitches": "pitches",
     "total_pitches": "total_pitches",
     "pitch_percent": "pitch_percent",
+    "pa": "PA",
+    "ba": "AVG",
     "bip": "BIP",
     "iso": "ISO",
     "babip": "BABIP",

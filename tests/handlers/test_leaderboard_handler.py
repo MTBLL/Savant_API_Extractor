@@ -148,9 +148,9 @@ class TestLeaderboardHandler:
         leaderboard_fixtures: dict[str, str],
     ) -> None:
         """pitch_arsenal_stats is long on pitch_type — Ohtani has multiple rows."""
-        from savant_api_extractor.leaderboards import pitch_arsenal_stats_batter
+        from savant_api_extractor.leaderboards import pitch_arsenal_stats
 
-        config = pitch_arsenal_stats_batter.BATTER
+        config = pitch_arsenal_stats.BATTER
         mock_response = MagicMock()
         mock_response.text = leaderboard_fixtures[config.name]
         mock_response.raise_for_status = MagicMock()

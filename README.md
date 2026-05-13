@@ -36,11 +36,11 @@ A full `all` extraction writes **ten JSON files** to the output directory:
 
 - `savant_statcast_batter_YYYY_MM_DD_HHMM.json` — contact quality (hit)
 - `savant_statcast_pitcher_YYYY_MM_DD_HHMM.json` — contact quality (allowed)
-- `savant_expected_statistics_batter_YYYY_MM_DD_HHMM.json` — x-stats (hit)
-- `savant_expected_statistics_pitcher_YYYY_MM_DD_HHMM.json` — x-stats (allowed) + xERA
+- `savant_expected_statistics_pitcher_YYYY_MM_DD_HHMM.json` — x-stats (allowed) + xERA *(the batter variant is intentionally not pulled — its columns are already in the batter splits file)*
 - `savant_home_runs_batter_YYYY_MM_DD_HHMM.json` — HR / xHR / park-adjusted (hit)
 - `savant_home_runs_pitcher_YYYY_MM_DD_HHMM.json` — HR / xHR / park-adjusted (allowed)
-- `savant_pitch_arsenal_stats_batter_YYYY_MM_DD_HHMM.json` — per-pitch outcomes (long on `pitch_type`)
+- `savant_pitch_arsenal_stats_batter_YYYY_MM_DD_HHMM.json` — batter per-pitch outcomes (long on `pitch_type`)
+- `savant_pitch_arsenal_stats_pitcher_YYYY_MM_DD_HHMM.json` — pitcher per-pitch outcomes (long on `pitch_type`)
 - `savant_sprint_speed_YYYY_MM_DD_HHMM.json` — baserunning speed + bolts
 
 Each file is a JSON array of row objects, joinable on `player_id`. See [Leaderboard extracts](#leaderboard-extracts) below for the data contract and `savant_api_extractor/leaderboards/SPECS.md` for live per-endpoint snapshots.
@@ -138,37 +138,41 @@ The eight `savant_{slug}_*.json` files are independent extracts of Savant's `/le
 |---|---|---|
 | `statcast_batter` | `(player_id,)` | HR, SLG — max_ev, barrels, hard-hit |
 | `statcast_pitcher` | `(player_id,)` | ERA, WHIP, K/9 — allowed contact quality |
-| `expected_statistics_batter` | `(player_id, year)` | OBP, SLG, R, RBI — xwOBA / xBA / xSLG |
-| `expected_statistics_pitcher` | `(player_id, year)` | ERA, WHIP — xERA, xwOBA allowed |
+| `expected_statistics_pitcher` | `(player_id, year)` | ERA, WHIP — **xERA**, xwOBA allowed (only Savant source of xERA) |
 | `home_runs_batter` | `(player_id, year, hr_type)` | HR — xHR, park-adjusted variants |
 | `home_runs_pitcher` | `(player_id, year, hr_type)` | (HR allowed — context only) |
-| `pitch_arsenal_stats_batter` | `(player_id, pitch_type)` | matchup projection (long-format) |
+| `pitch_arsenal_stats_batter` | `(player_id, pitch_type)` | matchup projection — batter vs pitch-type (long-format) |
+| `pitch_arsenal_stats_pitcher` | `(player_id, pitch_type)` | matchup projection — pitcher arsenal (long-format) |
 | `sprint_speed` | `(player_id,)` | SB — sprint_speed, bolts, hp_to_1b |
+
+> The batter variant of `expected_statistics` is intentionally **not** ETL'd — every column it provided (PA, AVG, xAVG/xAVGdiff, SLG/xSLG/xSLGdiff, wOBA/xwOBA/wOBAdiff, BIP) is also returned by the `statcast_search` endpoint that feeds the `savant_batters_*.json` splits file. Pulling it would be redundant.
 
 For full column lists, header mappings, and live snapshot samples, see [`savant_api_extractor/leaderboards/SPECS.md`](savant_api_extractor/leaderboards/SPECS.md).
 
 #### Example DuckDB load
 
 ```sql
--- Load each leaderboard into its own table
+-- Load each role-relevant table. The "all" row of the batter splits is the
+-- batter-side baseline; xwOBA / xSLG / xAVG / PA / AVG / wOBA / SLG / OBP all live there.
+CREATE TABLE batters_splits         AS SELECT * FROM read_json_auto('savant_batters_*.json');
 CREATE TABLE statcast_batter        AS SELECT * FROM read_json_auto('savant_statcast_batter_*.json');
-CREATE TABLE expected_stats_batter  AS SELECT * FROM read_json_auto('savant_expected_statistics_batter_*.json');
 CREATE TABLE sprint_speed           AS SELECT * FROM read_json_auto('savant_sprint_speed_*.json');
 CREATE TABLE pitch_arsenal_batter   AS SELECT * FROM read_json_auto('savant_pitch_arsenal_stats_batter_*.json');
 
--- Compose a batter projection view joining the 4 batter-side leaderboards
+-- Compose a batter projection view joining the splits baseline + 3 leaderboards
 CREATE VIEW batter_projection AS
 SELECT
-  e.player_id, e.name,
-  e."xwOBA", e."xSLG", e."xAVG",          -- from expected_statistics
-  s.max_ev, s.barrels_per_pa_pct,         -- from statcast
-  sp.sprint_speed, sp.bolts,              -- from sprint_speed
-  pa.pitch_type, pa."xwOBA" AS xwOBA_vs_pitch  -- from pitch_arsenal (long-format)
-FROM expected_stats_batter e
-LEFT JOIN statcast_batter      s  ON e.player_id = s.player_id
-LEFT JOIN sprint_speed         sp ON e.player_id = sp.player_id
-LEFT JOIN pitch_arsenal_batter pa ON e.player_id = pa.player_id;
--- Each (player_id) row in expected_stats_batter expands to N rows here, one per
+  b.player_id, b.name,
+  b."xwOBA", b."xSLG", b."xAVG", b."PA", b."AVG",  -- from batters splits (opp_hand='all')
+  s.max_ev, s.barrels_per_pa_pct,                  -- from statcast leaderboard
+  sp.sprint_speed, sp.bolts,                       -- from sprint_speed leaderboard
+  pa.pitch_type, pa."xwOBA" AS xwOBA_vs_pitch      -- from pitch_arsenal (long-format)
+FROM batters_splits b
+LEFT JOIN statcast_batter      s  ON b.player_id = s.player_id
+LEFT JOIN sprint_speed         sp ON b.player_id = sp.player_id
+LEFT JOIN pitch_arsenal_batter pa ON b.player_id = pa.player_id
+WHERE b.opp_hand = 'all';
+-- Each (player_id) row from batters_splits expands to N rows here, one per
 -- pitch_type the batter has faced (because pitch_arsenal_batter is long-format).
 ```
 

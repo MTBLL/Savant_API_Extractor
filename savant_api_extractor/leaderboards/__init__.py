@@ -15,7 +15,7 @@ from __future__ import annotations
 from savant_api_extractor.leaderboards import (
     expected_statistics,
     home_runs,
-    pitch_arsenal_stats_batter,
+    pitch_arsenal_stats,
     sprint_speed,
     statcast,
 )
@@ -24,11 +24,14 @@ from savant_api_extractor.leaderboards._config import LeaderboardConfig
 ETL_TIER_CONFIGS: tuple[LeaderboardConfig, ...] = (
     statcast.BATTER,
     statcast.PITCHER,
-    expected_statistics.BATTER,
+    # expected_statistics.BATTER intentionally NOT pulled — every column it
+    # provided is now in the batter splits export (`pa`/`ba` were added to
+    # SHARED_HEADER_MAPPING; xAVG/xSLG/xwOBA/etc. were already there).
     expected_statistics.PITCHER,
     home_runs.BATTER,
     home_runs.PITCHER,
-    pitch_arsenal_stats_batter.BATTER,
+    pitch_arsenal_stats.BATTER,
+    pitch_arsenal_stats.PITCHER,
     sprint_speed.CONFIG,
 )
 
@@ -38,6 +41,6 @@ __all__ = [
     "statcast",
     "expected_statistics",
     "home_runs",
-    "pitch_arsenal_stats_batter",
+    "pitch_arsenal_stats",
     "sprint_speed",
 ]

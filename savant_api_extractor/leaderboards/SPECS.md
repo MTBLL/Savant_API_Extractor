@@ -8,7 +8,7 @@ Each section captures:
 - Raw column list (the order Savant returns them in)
 - Header mapping (raw → normalized) — driven by the config module
 - Identity columns (the natural key for joins downstream)
-- A raw Ohtani sample row (he's the cross-leaderboard anchor — present in all 8)
+- A raw Ohtani sample row (he's the cross-leaderboard anchor — present in all 7)
 
 If Savant changes a column name or adds/removes columns, the live response will diverge from the raw-column list captured here. The handler will silently drop unmapped columns (intentional) so the practical failure mode is "downstream tables suddenly missing data," not a hard error. Re-run the snapshot when investigating.
 
@@ -88,11 +88,13 @@ avg_hr_distance | ev95plus | ev95percent | barrels | brl_percent | brl_pa
 
 ---
 
-## 3. `expected_statistics_batter` — Statcast x-stats (hitting)
+## 3. `expected_statistics_pitcher` — Statcast x-stats (allowed) + xERA
 
-**URL:** `https://baseballsavant.mlb.com/leaderboard/expected_statistics?type=batter&year=2026&csv=true`
-**Today (2026-05-13):** 269 rows × 14 columns
+**URL:** `https://baseballsavant.mlb.com/leaderboard/expected_statistics?type=pitcher&year=2026&csv=true`
+**Today (2026-05-13):** 367 rows × 17 columns
 **Identity:** `(player_id, year)`
+
+> The batter variant of this endpoint is **intentionally not ETL'd** — every column it provides (PA, AVG, xAVG, xAVGdiff, SLG, xSLG, xSLGdiff, wOBA, xwOBA, wOBAdiff, BIP) is also returned by the `statcast_search` endpoint that feeds the `savant_batters_*.json` splits file. The pitcher variant is kept here because it's the **only source of `xERA` / `xERAdiff`** in the entire Savant catalog.
 
 ### Raw columns
 ```
@@ -100,6 +102,7 @@ last_name, first_name | player_id | year | pa | bip
 ba | est_ba | est_ba_minus_ba_diff
 slg | est_slg | est_slg_minus_slg_diff
 woba | est_woba | est_woba_minus_woba_diff
+era | xera | era_minus_xera_diff
 ```
 
 ### Header mappings
@@ -119,34 +122,6 @@ woba | est_woba | est_woba_minus_woba_diff
 | `woba` | `wOBA` |
 | `est_woba` | `xwOBA` |
 | `est_woba_minus_woba_diff` | `wOBAdiff` |
-
-### Ohtani sample (raw)
-```json
-{
-  "last_name, first_name": "Ohtani, Shohei",
-  "player_id": 660271, "year": 2026, "pa": 185, "bip": 108,
-  "ba": 0.24, "est_ba": 0.256, "est_ba_minus_ba_diff": -0.016,
-  "slg": 0.427, "est_slg": 0.49, "est_slg_minus_slg_diff": -0.063,
-  "woba": 0.348, "est_woba": 0.38, "est_woba_minus_woba_diff": -0.032
-}
-```
-
----
-
-## 4. `expected_statistics_pitcher` — Statcast x-stats (allowed) + xERA
-
-**URL:** `https://baseballsavant.mlb.com/leaderboard/expected_statistics?type=pitcher&year=2026&csv=true`
-**Today (2026-05-13):** 367 rows × 17 columns
-**Identity:** `(player_id, year)`
-
-### Raw columns
-```
-(all 14 batter columns) + era | xera | era_minus_xera_diff
-```
-
-### Additional header mappings (beyond the batter set)
-| raw | renamed |
-|---|---|
 | `era` | `ERA` |
 | `xera` | `xERA` |
 | `era_minus_xera_diff` | `xERAdiff` |
@@ -165,7 +140,7 @@ woba | est_woba | est_woba_minus_woba_diff
 
 ---
 
-## 5. `home_runs_batter` — HR / xHR / park-adjusted variants (hit)
+## 4. `home_runs_batter` — HR / xHR / park-adjusted variants (hit)
 
 **URL:** `https://baseballsavant.mlb.com/leaderboard/home-runs?year=2026&csv=true`
 **Today (2026-05-13):** 399 rows × 13 columns
@@ -210,7 +185,7 @@ hr_total | xhr | xhr_diff
 
 ---
 
-## 6. `home_runs_pitcher` — HR / xHR / park-adjusted (allowed)
+## 5. `home_runs_pitcher` — HR / xHR / park-adjusted (allowed)
 
 **URL:** `https://baseballsavant.mlb.com/leaderboard/home-runs?player_type=Pitcher&year=2026&csv=true`
 **Today (2026-05-13):** 504 rows × 13 columns
@@ -230,7 +205,7 @@ hr_total | xhr | xhr_diff
 
 ---
 
-## 7. `pitch_arsenal_stats_batter` — per-pitch outcomes (long-format)
+## 6. `pitch_arsenal_stats_batter` — per-pitch outcomes (long-format, hitting)
 
 **URL:** `https://baseballsavant.mlb.com/leaderboard/pitch-arsenal-stats?type=batter&year=2026&csv=true`
 **Today (2026-05-13):** 996 rows × 20 columns
@@ -282,6 +257,33 @@ est_ba | est_slg | est_woba | hard_hit_percent
   "whiff_percent": 23.6, "k_percent": 28.6, "put_away": 27.1,
   "est_ba": 0.231, "est_slg": 0.411, "est_woba": 0.36,
   "hard_hit_percent": 46.9
+}
+```
+
+---
+
+## 7. `pitch_arsenal_stats_pitcher` — per-pitch outcomes (long-format, pitching)
+
+**URL:** `https://baseballsavant.mlb.com/leaderboard/pitch-arsenal-stats?type=pitcher&year=2026&csv=true`
+**Today (2026-05-13):** 613 rows × 20 columns
+**Identity:** `(player_id, pitch_type)` ← **long-format** on `pitch_type`
+**Cardinality:** ~2-5 rows per pitcher (one per pitch type in their arsenal that meets Savant's threshold)
+**Schema:** identical to `pitch_arsenal_stats_batter` — same 20 raw columns, same mapping. Only the perspective flips (these are *thrown* pitches with the outcomes the pitcher allowed; the batter variant is *faced* pitches with the outcomes the batter produced).
+
+> This is the pitcher-archetype side of the matchup join. Combine with `pitch_arsenal_stats_batter` on `pitch_type` to project at-bat outcomes for a specific batter against a specific pitcher's arsenal.
+
+### Ohtani sample (raw — Ohtani has 2 rows as a pitcher; pitch_type=FF shown)
+```json
+{
+  "last_name, first_name": "Ohtani, Shohei",
+  "player_id": 660271, "team_name_alt": "LAD",
+  "pitch_type": "FF", "pitch_name": "4-Seam Fastball",
+  "run_value_per_100": -0.8, "run_value": -2,
+  "pitches": 250, "pitch_usage": 44.5, "pa": 68,
+  "ba": 0.207, "slg": 0.276, "woba": 0.270,
+  "whiff_percent": 27.1, "k_percent": 27.9, "put_away": 26.0,
+  "est_ba": 0.222, "est_slg": 0.341, "est_woba": 0.238,
+  "hard_hit_percent": 32.6
 }
 ```
 
