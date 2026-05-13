@@ -25,14 +25,27 @@ uv run savant_api_extractor --season 2025
 
 ## Output Files
 
-The default `all` extraction writes separate JSON files for batters and pitchers:
+A full `all` extraction writes **ten JSON files** to the output directory:
 
-- `savant_batters_YYYY_MM_DD_HHMM.json`
-- `savant_pitchers_YYYY_MM_DD_HHMM.json`
+**Two handedness-split files** (from the `statcast_search` endpoint family):
 
-Each file contains a JSON array of player stat objects. Each player contributes
-up to three rows per file — one row per handedness split. See
-[Handedness Splits](#handedness-splits-opp_hand) below.
+- `savant_batters_YYYY_MM_DD_HHMM.json` — batter rows, up to 3 per player (one per `opp_hand`)
+- `savant_pitchers_YYYY_MM_DD_HHMM.json` — pitcher rows, same shape
+
+**Eight leaderboard files** (from the `/leaderboard/*?csv=true` endpoint family):
+
+- `savant_statcast_batter_YYYY_MM_DD_HHMM.json` — contact quality (hit)
+- `savant_statcast_pitcher_YYYY_MM_DD_HHMM.json` — contact quality (allowed)
+- `savant_expected_statistics_batter_YYYY_MM_DD_HHMM.json` — x-stats (hit)
+- `savant_expected_statistics_pitcher_YYYY_MM_DD_HHMM.json` — x-stats (allowed) + xERA
+- `savant_home_runs_batter_YYYY_MM_DD_HHMM.json` — HR / xHR / park-adjusted (hit)
+- `savant_home_runs_pitcher_YYYY_MM_DD_HHMM.json` — HR / xHR / park-adjusted (allowed)
+- `savant_pitch_arsenal_stats_batter_YYYY_MM_DD_HHMM.json` — per-pitch outcomes (long on `pitch_type`)
+- `savant_sprint_speed_YYYY_MM_DD_HHMM.json` — baserunning speed + bolts
+
+Each file is a JSON array of row objects, joinable on `player_id`. See [Leaderboard extracts](#leaderboard-extracts) below for the data contract and `savant_api_extractor/leaderboards/SPECS.md` for live per-endpoint snapshots.
+
+To skip the leaderboard pulls (splits only), construct the runner with `include_leaderboards=False`.
 
 ## Downstream Schema Notes
 
@@ -107,6 +120,54 @@ Behavior notes:
   the underlying event set differs. No row appears in more than one split.
 - **API load.** A full `all` extraction now issues six HTTP calls (three splits
   × two player types) instead of two. Each call takes a few seconds.
+
+### Leaderboard extracts
+
+The eight `savant_{slug}_*.json` files are independent extracts of Savant's `/leaderboard/{slug}?csv=true` endpoints — different schemas, different identity keys, joinable on `player_id` downstream.
+
+#### Per-endpoint contract
+
+| Output file slug | Identity key | Predicts (6×6 H2H) |
+|---|---|---|
+| `statcast_batter` | `(player_id,)` | HR, SLG — max_ev, barrels, hard-hit |
+| `statcast_pitcher` | `(player_id,)` | ERA, WHIP, K/9 — allowed contact quality |
+| `expected_statistics_batter` | `(player_id, year)` | OBP, SLG, R, RBI — xwOBA / xBA / xSLG |
+| `expected_statistics_pitcher` | `(player_id, year)` | ERA, WHIP — xERA, xwOBA allowed |
+| `home_runs_batter` | `(player_id, year, hr_type)` | HR — xHR, park-adjusted variants |
+| `home_runs_pitcher` | `(player_id, year, hr_type)` | (HR allowed — context only) |
+| `pitch_arsenal_stats_batter` | `(player_id, pitch_type)` | matchup projection (long-format) |
+| `sprint_speed` | `(player_id,)` | SB — sprint_speed, bolts, hp_to_1b |
+
+For full column lists, header mappings, and live snapshot samples, see [`savant_api_extractor/leaderboards/SPECS.md`](savant_api_extractor/leaderboards/SPECS.md).
+
+#### Example DuckDB load
+
+```sql
+-- Load each leaderboard into its own table
+CREATE TABLE statcast_batter        AS SELECT * FROM read_json_auto('savant_statcast_batter_*.json');
+CREATE TABLE expected_stats_batter  AS SELECT * FROM read_json_auto('savant_expected_statistics_batter_*.json');
+CREATE TABLE sprint_speed           AS SELECT * FROM read_json_auto('savant_sprint_speed_*.json');
+CREATE TABLE pitch_arsenal_batter   AS SELECT * FROM read_json_auto('savant_pitch_arsenal_stats_batter_*.json');
+
+-- Compose a batter projection view joining the 4 batter-side leaderboards
+CREATE VIEW batter_projection AS
+SELECT
+  e.player_id, e.name,
+  e."xwOBA", e."xSLG", e."xAVG",          -- from expected_statistics
+  s.max_ev, s.barrels_per_pa_pct,         -- from statcast
+  sp.sprint_speed, sp.bolts,              -- from sprint_speed
+  pa.pitch_type, pa."xwOBA" AS xwOBA_vs_pitch  -- from pitch_arsenal (long-format)
+FROM expected_stats_batter e
+LEFT JOIN statcast_batter      s  ON e.player_id = s.player_id
+LEFT JOIN sprint_speed         sp ON e.player_id = sp.player_id
+LEFT JOIN pitch_arsenal_batter pa ON e.player_id = pa.player_id;
+-- Each (player_id) row in expected_stats_batter expands to N rows here, one per
+-- pitch_type the batter has faced (because pitch_arsenal_batter is long-format).
+```
+
+#### Adding a new leaderboard
+
+Each leaderboard is a single `LeaderboardConfig` dataclass declared in `savant_api_extractor/leaderboards/{slug}.py`. Adding a new one means: write the config (URL path, default params, header mappings, identity columns), append it to `ETL_TIER_CONFIGS` in `leaderboards/__init__.py`, save a fixture CSV under `tests/fixtures/leaderboards/{name}.csv`, and the existing parameterized handler test plus the runner integration test automatically pick it up.
 
 ### Barrel and Hard-Hit Metrics
 
