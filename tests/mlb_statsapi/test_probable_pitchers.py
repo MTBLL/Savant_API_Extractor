@@ -103,7 +103,9 @@ def test_fetch_passes_date_to_statsapi(schedule_payload: dict) -> None:
         fetch_probable_pitchers("2025-09-15")
 
     _, kwargs = mock_get.call_args
-    assert kwargs["params"]["sportId"] == 1
+    # sportId is sent as a string to keep the params dict mono-typed
+    # (requests itself stringifies all params at URL-encoding time anyway).
+    assert kwargs["params"]["sportId"] == "1"
     assert kwargs["params"]["date"] == "2025-09-15"
     assert "probablePitcher" in kwargs["params"]["hydrate"]
 

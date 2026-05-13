@@ -53,13 +53,17 @@ def fetch_probable_pitchers(date: str | _date_type) -> list[dict[str, Any]]:
     date_str = date if isinstance(date, str) else date.isoformat()
 
     _logger.info(f"Fetching probable pitchers for {date_str}")
+    # All values cast to str so the dict is mono-typed — matches the
+    # convention in SavantController._generate_query_params and keeps the
+    # requests stub happy (mixing str + int values would infer dict[str, object]).
+    params: dict[str, str] = {
+        "sportId": str(SPORT_ID_MLB),
+        "date": date_str,
+        "hydrate": HYDRATE_FIELDS,
+    }
     response = requests.get(
         STATSAPI_SCHEDULE_URL,
-        params={
-            "sportId": SPORT_ID_MLB,
-            "date": date_str,
-            "hydrate": HYDRATE_FIELDS,
-        },
+        params=params,
         timeout=REQUEST_TIMEOUT_SECONDS,
     )
     response.raise_for_status()
