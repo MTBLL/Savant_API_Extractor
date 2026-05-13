@@ -350,3 +350,183 @@ with ThreadPoolExecutor(max_workers=4) as ex:
         print(f'  cols: {columns}')
 "
 ```
+
+---
+
+# Part II: RT-tier endpoints
+
+The endpoints below are **not pulled by the bulk runner** (`SavantRunner.run`). They live in `RT_TIER_CONFIGS` and are imported on-demand by the analytics app — typically for matchup drill-downs (probable-pitcher arsenal, batter swing profile, batted-ball direction). Same `LeaderboardHandler` consumes them; same Ohtani-anchored fixtures cover them in tests.
+
+---
+
+## RT-1. `pitch_arsenals` — per-pitch avg velocity per pitcher (wide-format)
+
+**URL:** `https://baseballsavant.mlb.com/leaderboard/pitch-arsenals?year=2026&csv=true`
+**Today (2026-05-13):** 365 rows × 12 columns
+**Identity:** `(player_id,)`
+**Shape:** wide on pitch type — one column per pitch-type code (ff/si/fc/sl/ch/cu/fs/kn/st/sv). NaN cells for pitches the pitcher doesn't throw.
+
+### Header mappings
+| raw | renamed |
+|---|---|
+| `last_name, first_name` | `name` |
+| `pitcher` | `player_id` |
+| `{type}_avg_speed` | `{type}_avg_speed` (preserved) |
+
+### Ohtani sample (raw)
+```json
+{
+  "last_name, first_name": "Ohtani, Shohei", "pitcher": 660271,
+  "ff_avg_speed": 98.0, "si_avg_speed": 95.7, "fc_avg_speed": 91.8,
+  "sl_avg_speed": 87.4, "ch_avg_speed": null, "cu_avg_speed": 74.5
+}
+```
+
+---
+
+## RT-2. `pitch_movement` — per-pitch break vs league (long-format)
+
+**URL:** `https://baseballsavant.mlb.com/leaderboard/pitch-movement?year=2026&csv=true`
+**Today (2026-05-13):** 383 rows × 24 columns
+**Identity:** `(player_id, pitch_type, year)`
+**Shape:** long-format — one row per (pitcher, pitch_type, year). Strongest single proxy for "stuff" quality; the `diff_z`/`diff_x` columns normalize against league average for that pitch type.
+
+### Header mappings
+| raw | renamed |
+|---|---|
+| `last_name, first_name` | `name` |
+| `pitcher_id` | `player_id` |
+| `pitch_type_name` | `pitch_name` |
+| `pitcher_break_z` | `break_z` |
+| `pitcher_break_z_induced` | `break_z_induced` |
+| `pitcher_break_x` | `break_x` |
+| `percent_rank_diff_z` | `pct_rank_diff_z` |
+| `percent_rank_diff_x` | `pct_rank_diff_x` |
+| `team_name_abbrev` | `team` |
+| `pitch_type`, `pitch_hand`, `avg_speed`, `diff_z`, `rise`, `diff_x`, `tail`, `league_break_z`, `league_break_x`, `pitches_thrown`, `total_pitches`, `pitches_per_game`, `pitch_per`, `team_name`, `year` | (preserved) |
+
+### Ohtani sample (raw — one of multiple rows; pitch_type=FF shown)
+```json
+{
+  "year": 2026, "last_name, first_name": "Ohtani, Shohei", "pitcher_id": 660271,
+  "team_name": "Dodgers", "team_name_abbrev": "LAD",
+  "pitch_hand": "R", "avg_speed": 98.0, "pitch_type": "FF",
+  "pitches_thrown": 250
+}
+```
+
+---
+
+## RT-3. `active_spin` — active-spin % per pitch type per pitcher (wide-format)
+
+**URL:** `https://baseballsavant.mlb.com/leaderboard/active-spin?year=2026&csv=true`
+**Today (2026-05-13):** 452 rows × 12 columns
+**Identity:** `(player_id,)`
+**Shape:** wide on pitch type. Active spin is the % of total spin that contributes to movement vs. gyroscopic spin. Higher % = more "ride" / "drop".
+
+### Header mappings
+| raw | renamed |
+|---|---|
+| `entity_name` | `name` |
+| `entity_id` | `player_id` |
+| `pitch_hand` | `pitch_hand` |
+| `active_spin_fourseam` | `active_spin_ff` |
+| `active_spin_sinker` | `active_spin_si` |
+| `active_spin_cutter` | `active_spin_fc` |
+| `active_spin_changeup` | `active_spin_ch` |
+| `active_spin_splitter` | `active_spin_fs` |
+| `active_spin_curve` | `active_spin_cu` |
+| `active_spin_slider` | `active_spin_sl` |
+| `active_spin_sweeper` | `active_spin_st` |
+| `active_spin_slurve` | `active_spin_sv` |
+
+Pitch-type codes match `pitch_arsenals` so the two are directly join-able on (player_id, pitch_type) after pivoting either to long.
+
+### Ohtani sample (raw)
+```json
+{
+  "entity_name": "Ohtani, Shohei", "entity_id": 660271, "pitch_hand": "R",
+  "active_spin_fourseam": 74.6, "active_spin_sinker": 70.6,
+  "active_spin_cutter": null, "active_spin_changeup": null,
+  "active_spin_splitter": 69.7
+}
+```
+
+---
+
+## RT-4. `pitcher_arm_angles` — release point / arm slot
+
+**URL:** `https://baseballsavant.mlb.com/leaderboard/pitcher-arm-angles?year=2026&csv=true`
+**Today (2026-05-13):** 306 rows × 10 columns
+**Identity:** `(player_id,)`
+
+### Header mappings
+| raw | renamed |
+|---|---|
+| `pitcher` | `player_id` |
+| `pitcher_name` | `name` |
+| `pitch_hand` | `pitch_hand` |
+| `n_pitches` | `n_pitches` |
+| `team_id` | `team_id` |
+| `ball_angle` | `ball_angle` |
+| `relative_release_ball_x` | `release_ball_x_rel` |
+| `release_ball_z` | `release_ball_z` |
+| `relative_shoulder_x` | `shoulder_x_rel` |
+| `shoulder_z` | `shoulder_z` |
+
+### Ohtani sample (raw)
+```json
+{
+  "pitcher": 660271, "pitcher_name": "Ohtani, Shohei",
+  "pitch_hand": "R", "n_pitches": 562, "team_id": 119,
+  "ball_angle": 34.9, "relative_release_ball_x": -2.02, "release_ball_z": 5.73
+}
+```
+
+---
+
+## RT-5. `bat_tracking_swing_path` — batter swing diagnostics
+
+**URL:** `https://baseballsavant.mlb.com/leaderboard/bat-tracking/swing-path-attack-angle?year=2026&csv=true`
+**Today (2026-05-13):** 224 rows × 13 columns
+**Identity:** `(player_id, stands)`
+**Shape:** one row per (batter, batting side). Switch-hitters get two rows.
+
+### Header mappings
+| raw | renamed |
+|---|---|
+| `id` | `player_id` |
+| `name` | `name` |
+| `side` | `stands` |
+| `avg_bat_speed`, `swing_tilt`, `attack_angle`, `attack_direction`, `ideal_attack_angle_rate`, `avg_intercept_y_vs_plate`, `avg_intercept_y_vs_batter`, `avg_batter_y_position`, `avg_batter_x_position`, `competitive_swings` | (preserved) |
+
+### Ohtani sample (raw, side=L)
+```json
+{
+  "id": 660271, "name": "Ohtani, Shohei", "side": "L",
+  "avg_bat_speed": 74.69, "swing_tilt": 37.5, "attack_angle": 13.3,
+  "attack_direction": -0.25, "ideal_attack_angle_rate": 0.534
+}
+```
+
+---
+
+## RT-6. `batted_ball_batter` — batted-ball type + pull-direction rates
+
+**URL:** `https://baseballsavant.mlb.com/leaderboard/batted-ball?type=batter&year=2026&csv=true`
+**Today (2026-05-13):** 270 rows × 17 columns
+**Identity:** `(player_id,)`
+
+Contains `pull_air_rate` — a strong HR predictor (pull + elevate is the homer formula).
+
+### Header mappings
+All raw columns are preserved: `id` → `player_id`, `name` → `name`, plus rate columns (`bbe`, `gb_rate`, `air_rate`, `fb_rate`, `ld_rate`, `pu_rate`, `pull_rate`, `straight_rate`, `oppo_rate`, `pull_gb_rate`, `straight_gb_rate`, `oppo_gb_rate`, `pull_air_rate`, `straight_air_rate`, `oppo_air_rate`).
+
+### Ohtani sample (raw)
+```json
+{
+  "id": 660271, "name": "Ohtani, Shohei", "bbe": 108,
+  "gb_rate": 0.463, "air_rate": 0.537, "fb_rate": 0.352, "ld_rate": 0.167,
+  "pull_air_rate": ...
+}
+```

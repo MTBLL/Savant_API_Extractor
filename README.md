@@ -178,7 +178,46 @@ WHERE b.opp_hand = 'all';
 
 #### Adding a new leaderboard
 
-Each leaderboard is a single `LeaderboardConfig` dataclass declared in `savant_api_extractor/leaderboards/{slug}.py`. Adding a new one means: write the config (URL path, default params, header mappings, identity columns), append it to `ETL_TIER_CONFIGS` in `leaderboards/__init__.py`, save a fixture CSV under `tests/fixtures/leaderboards/{name}.csv`, and the existing parameterized handler test plus the runner integration test automatically pick it up.
+Each leaderboard is a single `LeaderboardConfig` dataclass declared in `savant_api_extractor/leaderboards/{slug}.py`. Adding a new one means: write the config (URL path, default params, header mappings, identity columns), append it to `ETL_TIER_CONFIGS` (or `RT_TIER_CONFIGS` — see below) in `leaderboards/__init__.py`, save a fixture CSV under `tests/fixtures/leaderboards/{name}.csv`, and the existing parameterized handler test picks it up.
+
+### Realtime-fetch leaderboards (RT-tier)
+
+Six additional leaderboards are configured but **not pulled by the bulk runner**. They live in `RT_TIER_CONFIGS` and are intended for the analytics app to call on demand — when viewing a specific matchup, fetch the probable pitcher's per-pitch arsenal, the batter's swing path, etc. The same `LeaderboardHandler` consumes them; only the cadence differs (per-request, not nightly).
+
+| Slug | Use case |
+|---|---|
+| `pitch_arsenals` | Per-pitch avg velocity per pitcher (wide on pitch type) — archetype |
+| `pitch_movement` | Per-pitch break vs league (long on pitch type) — K/9 & WHIP predictor |
+| `active_spin` | Active-spin % per pitch type per pitcher (wide on pitch type) — K/9 archetype |
+| `pitcher_arm_angles` | Release point / arm slot — release archetype |
+| `bat_tracking_swing_path` | Batter swing diagnostics (bat speed, attack angle) |
+| `batted_ball_batter` | Pull-air rate + GB/FB/LD/pull/oppo rates — HR drill-down |
+
+#### Calling an RT config from an analytics app
+
+```python
+from savant_api_extractor.handlers import LeaderboardHandler
+from savant_api_extractor.leaderboards import pitch_arsenals, pitch_movement
+
+handler = LeaderboardHandler()
+
+# Pull a pitcher's whole arsenal (one row per pitcher; pitch_arsenals is wide)
+arsenals_df = handler.extract(pitch_arsenals.CONFIG, year="2026")
+strider = arsenals_df[arsenals_df["player_id"] == 675911]
+strider_ff_velo = strider["ff_avg_speed"].iloc[0]
+
+# Pull every pitcher's movement profile (long-format on pitch_type)
+movement_df = handler.extract(pitch_movement.CONFIG, year="2026")
+strider_breakers = movement_df[
+    (movement_df["player_id"] == 675911) & (movement_df["pitch_type"].isin(["SL", "CU"]))
+]
+```
+
+#### Caching policy
+
+This package is the **network layer only**. RT-tier responses are not cached by the handler — every `extract()` call hits Savant. Analytics-app callers should layer their own caching (per-request, per-day, etc.) appropriate to their query patterns. The handler is idempotent within a season, so a 1-day cache TTL is usually sufficient for these endpoints.
+
+For full per-endpoint column lists, header mappings, and live snapshot samples, see [`savant_api_extractor/leaderboards/SPECS.md`](savant_api_extractor/leaderboards/SPECS.md) (Part II: RT-tier endpoints).
 
 ### Barrel and Hard-Hit Metrics
 
