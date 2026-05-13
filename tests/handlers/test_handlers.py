@@ -20,12 +20,11 @@ class TestBatterHandler:
 
     @patch("savant_api_extractor.handlers.batter_handler.requests.get")
     def test_batter_handler_extract(
-        self, mock_get: MagicMock, batters_fixture: str
+        self, mock_get: MagicMock, batters_all_fixture: str
     ) -> None:
-        """Test that BatterHandler can extract data using fixture file."""
-        # Read fixture file
+        """Test that BatterHandler parses an opp_hand='all' fixture correctly."""
         mock_response = MagicMock()
-        mock_response.text = batters_fixture
+        mock_response.text = batters_all_fixture
         mock_response.raise_for_status = MagicMock()
         mock_get.return_value = mock_response
 
@@ -33,18 +32,14 @@ class TestBatterHandler:
         query_params = {"all": "true", "type": "details"}
         df = handler.extract(query_params)
 
+        # Shape + schema
         assert isinstance(df, pd.DataFrame)
         assert len(df) > 0
+        assert "player_name" not in df.columns  # raw col renamed to "name"
+        for col in ("name", "player_id", "first_name", "last_name", "name_ascii", "slug"):
+            assert col in df.columns
 
-        # Assert on first couple of items
-        # Note: headers are cleaned (lowercase, spaces -> underscores)
-        first_row = df.iloc[0]
-        assert "name" in df.columns  # "player_name" becomes "name" after cleaning
-        assert "player_id" in df.columns
-        assert "first_name" in df.columns
-        assert "last_name" in df.columns
-        assert "name_ascii" in df.columns
-        assert "slug" in df.columns
+        # Identity column ordering (name → first_name → last_name → name_ascii → slug)
         columns = df.columns.to_list()
         name_index = columns.index("name")
         assert columns[name_index + 1 : name_index + 5] == [
@@ -53,41 +48,30 @@ class TestBatterHandler:
             "name_ascii",
             "slug",
         ]
-        assert first_row["name"] == "Judge, Aaron"
-        assert first_row["first_name"] == "Aaron"
-        assert first_row["last_name"] == "Judge"
-        assert first_row["name_ascii"] == "Aaron Judge"
-        assert first_row["slug"] == "aaron-judge"
-        assert first_row["player_type"] == "batter"
-        assert first_row["player_id"] == 592450
-        assert "player_id_pct_rnk" not in df.columns
-        assert "hardhit_pct" in df.columns
-        assert "hardhit_pct_pct_rnk" in df.columns
-        assert "barrels_per_bbe_pct" in df.columns
-        assert "barrels_per_bbe_pct_pct_rnk" in df.columns
-        assert "barrels_per_pa_pct" in df.columns
-        assert "barrels_per_pa_pct_pct_rnk" in df.columns
 
+        # Role tagging applied to every row
+        assert (df["player_type"] == "batter").all()
+
+        # Percentile-rank columns are no longer emitted at extract time.
+        assert not any(col.endswith("_pct_rnk") for col in df.columns)
+
+        # Anchor on Ohtani — present across all batter splits, name-parser-stable.
         ohtani = df.loc[df["name"] == "Ohtani, Shohei"].iloc[0]
+        assert ohtani["first_name"] == "Shohei"
+        assert ohtani["last_name"] == "Ohtani"
+        assert ohtani["name_ascii"] == "Shohei Ohtani"
+        assert ohtani["slug"] == "shohei-ohtani"
         assert ohtani["player_type"] == "batter"
-        assert ohtani["hardhit_pct"] == pytest.approx(58.68544600938967)
-        assert 0 < ohtani["hardhit_pct_pct_rnk"] <= 100
-        assert ohtani["barrels_per_bbe_pct"] == pytest.approx(23.474178403755868)
-        assert 0 < ohtani["barrels_per_bbe_pct_pct_rnk"] <= 100
-        assert ohtani["barrels_per_pa_pct"] == pytest.approx(13.75515818431912)
-        assert 0 < ohtani["barrels_per_pa_pct_pct_rnk"] <= 100
-
-        # Check second row
-        if len(df) > 1:
-            second_row = df.iloc[1]
-            assert second_row["name"] == "Jensen, Carter"
-            assert second_row["player_id"] == 695600
+        # 2026 season-to-date Ohtani stats (regenerated from fixture)
+        assert ohtani["hardhit_pct"] == pytest.approx(46.2962962962963)
+        assert ohtani["barrels_per_bbe_pct"] == pytest.approx(16.666666666666664)
+        assert ohtani["barrels_per_pa_pct"] == pytest.approx(9.72972972972973)
 
         mock_get.assert_called_once()
 
     @patch("savant_api_extractor.handlers.pitcher_handler.requests.get")
     def test_batter_handler_request_exception(self, mock_get: MagicMock) -> None:
-        """Test that PitcherHandler raises RequestException on network errors."""
+        """Test that BatterHandler raises RequestException on network errors."""
         mock_get.side_effect = requests.exceptions.ConnectionError("Connection failed")
 
         handler = BatterHandler()
@@ -108,12 +92,11 @@ class TestPitcherHandler:
 
     @patch("savant_api_extractor.handlers.pitcher_handler.requests.get")
     def test_pitcher_handler_extract(
-        self, mock_get: MagicMock, pitchers_fixture: str
+        self, mock_get: MagicMock, pitchers_all_fixture: str
     ) -> None:
-        """Test that PitcherHandler can extract data."""
-        # Mock CSV response
+        """Test that PitcherHandler parses an opp_hand='all' fixture correctly."""
         mock_response = MagicMock()
-        mock_response.text = pitchers_fixture
+        mock_response.text = pitchers_all_fixture
         mock_response.raise_for_status = MagicMock()
         mock_get.return_value = mock_response
 
@@ -121,14 +104,13 @@ class TestPitcherHandler:
         query_params = {"all": "true", "type": "details"}
         df = handler.extract(query_params)
 
+        # Shape + schema
         assert isinstance(df, pd.DataFrame)
         assert len(df) > 0
         assert "player_name" not in df.columns
-        assert "name" in df.columns
-        assert "first_name" in df.columns
-        assert "last_name" in df.columns
-        assert "name_ascii" in df.columns
-        assert "slug" in df.columns
+        for col in ("name", "player_id", "first_name", "last_name", "name_ascii", "slug"):
+            assert col in df.columns
+
         columns = df.columns.to_list()
         name_index = columns.index("name")
         assert columns[name_index + 1 : name_index + 5] == [
@@ -137,29 +119,25 @@ class TestPitcherHandler:
             "name_ascii",
             "slug",
         ]
-        first_row = df.iloc[0]
-        assert first_row["name"] == "Marinaccio, Ron"
-        assert first_row["first_name"] == "Ron"
-        assert first_row["last_name"] == "Marinaccio"
-        assert first_row["name_ascii"] == "Ron Marinaccio"
-        assert first_row["slug"] == "ron-marinaccio"
-        assert first_row["player_type"] == "pitcher"
-        assert "player_id_pct_rnk" not in df.columns
-        assert "hardhit_pct" in df.columns
-        assert "hardhit_pct_pct_rnk" in df.columns
-        assert "barrels_per_bbe_pct" in df.columns
-        assert "barrels_per_bbe_pct_pct_rnk" in df.columns
-        assert "barrels_per_pa_pct" in df.columns
-        assert "barrels_per_pa_pct_pct_rnk" in df.columns
 
+        # Role tagging
+        assert (df["player_type"] == "pitcher").all()
+
+        # Percentile-rank columns are no longer emitted at extract time.
+        assert not any(col.endswith("_pct_rnk") for col in df.columns)
+
+        # Anchor on Ohtani — two-way player, present in pitcher fixtures too.
         ohtani = df.loc[df["name"] == "Ohtani, Shohei"].iloc[0]
+        assert ohtani["first_name"] == "Shohei"
+        assert ohtani["last_name"] == "Ohtani"
+        assert ohtani["name_ascii"] == "Shohei Ohtani"
+        assert ohtani["slug"] == "shohei-ohtani"
         assert ohtani["player_type"] == "pitcher"
-        assert ohtani["hardhit_pct"] == pytest.approx(31.03448275862069)
-        assert 0 < ohtani["hardhit_pct_pct_rnk"] <= 100
-        assert ohtani["barrels_per_bbe_pct"] == pytest.approx(3.4482758620689653)
-        assert 0 < ohtani["barrels_per_bbe_pct_pct_rnk"] <= 100
-        assert ohtani["barrels_per_pa_pct"] == pytest.approx(2.13903743315508)
-        assert 0 < ohtani["barrels_per_pa_pct_pct_rnk"] <= 100
+        # 2026 season-to-date Ohtani pitcher stats (regenerated from fixture)
+        assert ohtani["hardhit_pct"] == pytest.approx(38.46153846153847)
+        assert ohtani["barrels_per_bbe_pct"] == pytest.approx(3.296703296703297)
+        assert ohtani["barrels_per_pa_pct"] == pytest.approx(2.068965517241379)
+
         mock_get.assert_called_once()
 
     @patch("savant_api_extractor.handlers.pitcher_handler.requests.get")

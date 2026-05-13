@@ -13,9 +13,17 @@ from savant_api_extractor.utils.extraction_type import ExtractionType
 from savant_api_extractor.utils.thresholds import ThresholdType
 
 
+def _csv_response(text: str) -> MagicMock:
+    """Build a MagicMock that quacks like a requests.Response for a CSV payload."""
+    r = MagicMock()
+    r.text = text
+    r.raise_for_status = MagicMock()
+    return r
+
+
 def test_runner_initialization(tmp_path: Path) -> None:
     runner = SavantRunner(
-        season="2025",
+        season="2026",
         extraction_type="batters",
         threshold_type=ThresholdType.DEFAULT,
         output_dir=tmp_path,
@@ -23,20 +31,20 @@ def test_runner_initialization(tmp_path: Path) -> None:
 
     assert runner.extraction_method == ExtractionType.BATTER
     assert runner.threshold_type == ThresholdType.DEFAULT
-    assert runner.season == "2025"
+    assert runner.season == "2026"
     assert runner.output_dir == tmp_path
 
 
 def test_runner_export_to_json_dataframe(
     tmp_path: Path,
-    batters_fixture: str,
+    batters_all_fixture: str,
 ) -> None:
     runner = SavantRunner(
-        season="2025",
+        season="2026",
         extraction_type="batters",
         output_dir=tmp_path,
     )
-    df = pd.read_csv(io.StringIO(batters_fixture), low_memory=False)
+    df = pd.read_csv(io.StringIO(batters_all_fixture), low_memory=False)
 
     # Export expects a dictionary, not a single DataFrame
     output_paths = runner._export_to_json({"batters": df})  # pyright: ignore[reportPrivateUsage]
@@ -49,33 +57,43 @@ def test_runner_export_to_json_dataframe(
     data = json.loads(output_paths[0].read_text(encoding="utf-8"))
     assert isinstance(data, list)
     assert len(data) == len(df)
-    assert data[0]["player_name"] == "Judge, Aaron"
-    assert data[0]["player_id"] == 592450
+    # Round-trip first row preserves the raw CSV's first record
+    assert data[0]["player_name"] == df.iloc[0]["player_name"]
+    assert data[0]["player_id"] == int(df.iloc[0]["player_id"])
 
 
 def test_runner_run_batter_returns_dict(
     tmp_path: Path,
-    batters_fixture: str,
+    batters_split_fixtures: dict[str, str],
 ) -> None:
+    """Runner makes 3 HTTP calls per role (all → R → L) and concats them."""
     runner = SavantRunner(
-        season="2025",
+        season="2026",
         extraction_type="batters",
         output_dir=tmp_path,
     )
 
     with patch("savant_api_extractor.handlers.base_handler.requests.get") as mock_get:
-        mock_response = MagicMock()
-        mock_response.text = batters_fixture
-        mock_response.raise_for_status = MagicMock()
-        mock_get.return_value = mock_response
+        # Order matches OPP_HAND_SPLITS = ("all", "R", "L")
+        mock_get.side_effect = [
+            _csv_response(batters_split_fixtures["all"]),
+            _csv_response(batters_split_fixtures["R"]),
+            _csv_response(batters_split_fixtures["L"]),
+        ]
 
         results = runner.run()
 
-    # 3 calls per player_type: overall + vs RHP + vs LHP
     assert mock_get.call_count == 3
     assert list(results.keys()) == ["batters"]
-    assert set(results["batters"]["opp_hand"].unique()) == {"all", "R", "L"}
-    assert results["batters"].iloc[0]["name"] == "Judge, Aaron"
+
+    df = results["batters"]
+    # Every batter row tagged with one of the three opp_hand values
+    assert set(df["opp_hand"].unique()) == {"all", "R", "L"}
+    # Player_type tagging applied uniformly
+    assert (df["player_type"] == "batter").all()
+    # Ohtani appears across all 3 splits (stable two-way player)
+    ohtani_splits = set(df.loc[df["name"] == "Ohtani, Shohei", "opp_hand"])
+    assert ohtani_splits == {"all", "R", "L"}
 
     # Find the file matching pattern: savant_batters_YYYY_MM_DD_HHMM.json
     output_files = list(tmp_path.glob("savant_batters_*.json"))
@@ -86,56 +104,51 @@ def test_runner_run_batter_returns_dict(
 
     data = json.loads(output_files[0].read_text(encoding="utf-8"))
     assert isinstance(data, list)
-    assert data[0]["name"] == "Judge, Aaron"
     assert data[0]["player_type"] == "batter"
     assert "opp_hand" in data[0]
-    assert "hardhit_pct_pct_rnk" in data[0]
-    assert "opp_hand_pct_rnk" not in data[0]
+    # Percentile-rank columns are no longer emitted at extract time.
+    assert not any(k.endswith("_pct_rnk") for k in data[0].keys())
     assert {row["opp_hand"] for row in data} == {"all", "R", "L"}
 
 
 def test_runner_run_all_exports_json(
     tmp_path: Path,
-    batters_fixture: str,
-    pitchers_fixture: str,
+    batters_split_fixtures: dict[str, str],
+    pitchers_split_fixtures: dict[str, str],
 ) -> None:
+    """Full run hits 6 endpoints (2 roles × 3 splits) and writes 2 files."""
     runner = SavantRunner(
-        season="2025",
+        season="2026",
         extraction_type="all",
         output_dir=tmp_path,
     )
 
     with patch("savant_api_extractor.handlers.base_handler.requests.get") as mock_get:
-        def make_response(text: str) -> MagicMock:
-            r = MagicMock()
-            r.text = text
-            r.raise_for_status = MagicMock()
-            return r
-
-        # 3 batter calls (all/R/L) then 3 pitcher calls (all/R/L)
+        # Runner iterates extraction_types [BATTER, PITCHER]; for each, splits all → R → L
         mock_get.side_effect = [
-            make_response(batters_fixture),
-            make_response(batters_fixture),
-            make_response(batters_fixture),
-            make_response(pitchers_fixture),
-            make_response(pitchers_fixture),
-            make_response(pitchers_fixture),
+            _csv_response(batters_split_fixtures["all"]),
+            _csv_response(batters_split_fixtures["R"]),
+            _csv_response(batters_split_fixtures["L"]),
+            _csv_response(pitchers_split_fixtures["all"]),
+            _csv_response(pitchers_split_fixtures["R"]),
+            _csv_response(pitchers_split_fixtures["L"]),
         ]
 
         results = runner.run()
 
     assert mock_get.call_count == 6
-    assert "batters" in results
-    assert "pitchers" in results
-    assert set(results["batters"]["opp_hand"].unique()) == {"all", "R", "L"}
-    assert set(results["pitchers"]["opp_hand"].unique()) == {"all", "R", "L"}
-    assert results["batters"].iloc[0]["name"] == "Judge, Aaron"
-    assert results["pitchers"].iloc[0]["name"] == "Marinaccio, Ron"
+    assert "batters" in results and "pitchers" in results
 
-    # Find files matching pattern: savant_{batters|pitchers}_YYYY_MM_DD_HHMM.json
+    bdf = results["batters"]
+    pdf = results["pitchers"]
+    assert set(bdf["opp_hand"].unique()) == {"all", "R", "L"}
+    assert set(pdf["opp_hand"].unique()) == {"all", "R", "L"}
+    assert (bdf["player_type"] == "batter").all()
+    assert (pdf["player_type"] == "pitcher").all()
+
+    # Two output files, one per role
     batters_files = list(tmp_path.glob("savant_batters_*.json"))
     pitchers_files = list(tmp_path.glob("savant_pitchers_*.json"))
-
     assert len(batters_files) == 1
     assert len(pitchers_files) == 1
     assert re.match(
@@ -152,9 +165,8 @@ def test_runner_run_all_exports_json(
     assert isinstance(pitchers_data, list)
     assert len(batters_data) > 0
     assert len(pitchers_data) > 0
-    assert batters_data[0]["name"] == "Judge, Aaron"
     assert batters_data[0]["player_type"] == "batter"
-    assert "hardhit_pct_pct_rnk" in batters_data[0]
-    assert pitchers_data[0]["name"] == "Marinaccio, Ron"
     assert pitchers_data[0]["player_type"] == "pitcher"
-    assert "hardhit_pct_pct_rnk" in pitchers_data[0]
+    # Percentile-rank columns are no longer emitted at extract time.
+    assert not any(k.endswith("_pct_rnk") for k in batters_data[0].keys())
+    assert not any(k.endswith("_pct_rnk") for k in pitchers_data[0].keys())
