@@ -299,12 +299,15 @@ def test_runner_split_invariant_R_L_subset_of_all(
     Before the threshold fix, this could fail silently — sub-threshold
     players appeared in R/L (ungated) but not in `all` (gated at min_pas=30),
     breaking downstream joins. Asserting the invariant here pins it as a
-    structural guarantee.
+    structural guarantee. Scoped to splits behavior via
+    `include_leaderboards=False` — leaderboard pulls are orthogonal to the
+    split invariant being verified here.
     """
     runner = SavantRunner(
         season="2026",
         extraction_type="all",
         output_dir=tmp_path,
+        include_leaderboards=False,
     )
     with patch("savant_api_extractor.handlers.base_handler.requests.get") as mock_get:
         mock_get.side_effect = [
