@@ -88,42 +88,44 @@ def test_generate_query_params_batter_spring_training(
 
 def test_controller_extract_batter(
     controller: SavantController,
-    batters_fixture: str,
+    batters_all_fixture: str,
 ) -> None:
     with patch("savant_api_extractor.handlers.base_handler.requests.get") as mock_get:
         mock_response = MagicMock()
-        mock_response.text = batters_fixture
+        mock_response.text = batters_all_fixture
         mock_response.raise_for_status = MagicMock()
         mock_get.return_value = mock_response
 
         df = controller.extract(
             player_type=ExtractionType.BATTER,
-            season="2025",
+            season="2026",
         )
 
     assert not df.empty
     assert "name" in df.columns
     assert "player_id" in df.columns
+    assert (df["opp_hand"] == "all").all()
 
 
 def test_controller_extract_pitcher(
     controller: SavantController,
-    pitchers_fixture: str,
+    pitchers_all_fixture: str,
 ) -> None:
     with patch("savant_api_extractor.handlers.base_handler.requests.get") as mock_get:
         mock_response = MagicMock()
-        mock_response.text = pitchers_fixture
+        mock_response.text = pitchers_all_fixture
         mock_response.raise_for_status = MagicMock()
         mock_get.return_value = mock_response
 
         df = controller.extract(
             player_type=ExtractionType.PITCHER,
-            season="2025",
+            season="2026",
         )
 
     assert not df.empty
     assert "name" in df.columns
     assert "player_id" in df.columns
+    assert (df["opp_hand"] == "all").all()
 
 
 def test_controller_extract_all_expect_error(
@@ -189,17 +191,17 @@ def test_generate_query_params_unknown_opp_hand_raises(
 
 def test_controller_extract_tags_opp_hand(
     controller: SavantController,
-    batters_fixture: str,
+    batters_vs_R_fixture: str,
 ) -> None:
     with patch("savant_api_extractor.handlers.base_handler.requests.get") as mock_get:
         mock_response = MagicMock()
-        mock_response.text = batters_fixture
+        mock_response.text = batters_vs_R_fixture
         mock_response.raise_for_status = MagicMock()
         mock_get.return_value = mock_response
 
         df = controller.extract(
             player_type=ExtractionType.BATTER,
-            season="2025",
+            season="2026",
             opp_hand="R",
         )
 
