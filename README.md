@@ -219,6 +219,52 @@ This package is the **network layer only**. RT-tier responses are not cached by 
 
 For full per-endpoint column lists, header mappings, and live snapshot samples, see [`savant_api_extractor/leaderboards/SPECS.md`](savant_api_extractor/leaderboards/SPECS.md) (Part II: RT-tier endpoints).
 
+## MLB StatsAPI integration
+
+Alongside the Savant client, this package ships a small wrapper around the official **MLB StatsAPI** (`statsapi.mlb.com`) — public, no auth required. It lives here because the same analytics pipeline that consumes Savant data also needs daily probable-pitcher info to drive matchup views, and there's no reason to scrape the Savant `/probable-pitchers` HTML page when the canonical source returns clean JSON.
+
+### `fetch_probable_pitchers(date)` — daily slate
+
+```python
+from datetime import date
+from savant_api_extractor.mlb_statsapi import fetch_probable_pitchers
+
+slate = fetch_probable_pitchers(date.today())
+# Returns: list[dict], one per scheduled game
+```
+
+Each row carries:
+
+| Field | Type | Example |
+|---|---|---|
+| `gamePk` | int | `776315` |
+| `gameDate` | str (ISO 8601 UTC) | `"2025-09-15T22:45:00Z"` |
+| `gameState` | str | `"Preview"` / `"Live"` / `"Final"` |
+| `away_team_code` | str | `"atl"` (3-letter MLB internal code) |
+| `away_team_name` | str | `"Atlanta Braves"` |
+| `away_probable_id` | int \| None | `675911` (None if TBD) |
+| `away_probable_name` | str \| None | `"Spencer Strider"` (None if TBD) |
+| `home_team_code` | str | `"was"` |
+| `home_team_name` | str | `"Washington Nationals"` |
+| `home_probable_id` | int \| None | `680730` |
+| `home_probable_name` | str \| None | `"Mitchell Parker"` |
+
+Notes:
+- **Team codes are MLB's 3-letter lowercase internal codes** (`nya` for Yankees, `lan` for Dodgers), not the more familiar `NYY`/`LAD` codes used in Statcast. If your downstream needs the Statcast form, map at the consumer.
+- **Probable pitcher is `None` when not announced.** Don't expect both teams' pitchers to be set for every game — schedules often announce one side first.
+- **No caching here.** Like the RT-tier leaderboard configs, this is the network layer only — call from your analytics app and cache per-request as appropriate.
+
+### Endpoint hit
+
+```
+GET https://statsapi.mlb.com/api/v1/schedule
+    ?sportId=1
+    &date=YYYY-MM-DD
+    &hydrate=probablePitcher,team,lineups
+```
+
+The MLB StatsAPI is undocumented officially but publicly accessible; community references at [toddrob99/MLB-StatsAPI](https://github.com/toddrob99/MLB-StatsAPI).
+
 ### Barrel and Hard-Hit Metrics
 
 Both batter and pitcher exports include these contact-quality fields:
