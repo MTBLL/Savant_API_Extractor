@@ -5,6 +5,7 @@ import pytest
 from savant_api_extractor.controller.savant_controller import SavantController
 from savant_api_extractor.utils.extraction_type import ExtractionType
 from savant_api_extractor.utils.query_params import (
+    BATTER_STANDS,
     FLAG_COMPETITIVE,
     FLAG_NOT_BUNT,
     GROUP_BY,
@@ -13,6 +14,7 @@ from savant_api_extractor.utils.query_params import (
     HF_GAME_TYPE,
     HF_SEASON,
     MIN_PLATE_APPEARANCES,
+    PITCHER_THROWS,
     SORT_COL_XWOBA,
     SORT_COLUMN,
     SORT_ORDER,
@@ -134,3 +136,72 @@ def test_controller_extract_all_expect_error(
         )
 
         assert exc_info.value.args[0] == "Invalid player type"
+
+
+def test_generate_query_params_batter_vs_rhp_drops_min_pas(
+    controller: SavantController,
+) -> None:
+    params = controller._generate_query_params(  # pyright: ignore[reportPrivateUsage]
+        player_type=ExtractionType.BATTER,
+        season="2025",
+        opp_hand="R",
+    )
+    assert params[PITCHER_THROWS] == "R"
+    assert MIN_PLATE_APPEARANCES not in params
+    assert BATTER_STANDS not in params
+
+
+def test_generate_query_params_batter_vs_lhp_drops_min_pas(
+    controller: SavantController,
+) -> None:
+    params = controller._generate_query_params(  # pyright: ignore[reportPrivateUsage]
+        player_type=ExtractionType.BATTER,
+        season="2025",
+        opp_hand="L",
+    )
+    assert params[PITCHER_THROWS] == "L"
+    assert MIN_PLATE_APPEARANCES not in params
+
+
+def test_generate_query_params_pitcher_vs_rhb_uses_batter_stands(
+    controller: SavantController,
+) -> None:
+    params = controller._generate_query_params(  # pyright: ignore[reportPrivateUsage]
+        player_type=ExtractionType.PITCHER,
+        season="2025",
+        opp_hand="R",
+    )
+    assert params[BATTER_STANDS] == "R"
+    assert MIN_PLATE_APPEARANCES not in params
+    assert PITCHER_THROWS not in params
+
+
+def test_generate_query_params_unknown_opp_hand_raises(
+    controller: SavantController,
+) -> None:
+    with pytest.raises(ValueError):
+        controller._generate_query_params(  # pyright: ignore[reportPrivateUsage]
+            player_type=ExtractionType.BATTER,
+            season="2025",
+            opp_hand="S",
+        )
+
+
+def test_controller_extract_tags_opp_hand(
+    controller: SavantController,
+    batters_fixture: str,
+) -> None:
+    with patch("savant_api_extractor.handlers.base_handler.requests.get") as mock_get:
+        mock_response = MagicMock()
+        mock_response.text = batters_fixture
+        mock_response.raise_for_status = MagicMock()
+        mock_get.return_value = mock_response
+
+        df = controller.extract(
+            player_type=ExtractionType.BATTER,
+            season="2025",
+            opp_hand="R",
+        )
+
+    assert "opp_hand" in df.columns
+    assert (df["opp_hand"] == "R").all()

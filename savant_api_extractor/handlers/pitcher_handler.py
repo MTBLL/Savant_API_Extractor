@@ -18,12 +18,17 @@ class PitcherHandler(BaseHandler):
         """Initialize the pitcher handler."""
         super().__init__("PitcherHandler")
 
-    def extract(self, query_params: Dict[str, Any]) -> pd.DataFrame:
+    def extract(
+        self,
+        query_params: Dict[str, Any],
+        opp_hand: str = "all",
+    ) -> pd.DataFrame:
         """
         Extract pitcher statistics from the Savant API.
 
         Args:
             query_params: Query parameters for the API request
+            opp_hand: Tag value for the opp_hand column ("all", "R", or "L").
 
         Returns:
             DataFrame with cleaned pitcher statistics
@@ -44,6 +49,7 @@ class PitcherHandler(BaseHandler):
             df = add_name_columns(df)
             slug_index = df.columns.to_list().index("slug")
             df.insert(slug_index + 1, "player_type", "pitcher")
+            df.insert(slug_index + 2, "opp_hand", opp_hand)
             return add_percentile_rank_columns(df)
 
         except requests.exceptions.RequestException as e:
