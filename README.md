@@ -23,6 +23,69 @@ an extraction to a specific season, pass it explicitly:
 uv run savant_api_extractor --season 2025
 ```
 
+## Using as a library
+
+This package is also designed to be imported from other apps (e.g., the downstream MTBL analytics app). The top-level `savant_api_extractor/__init__.py` is intentionally empty — **nothing loads eagerly**. Each submodule is independently importable, and the cost of importing a given path is bounded by what that path actually needs.
+
+### Install
+
+This repo ships as a `uv` / `pip`-installable Python package via its `pyproject.toml`. From a consumer project:
+
+```bash
+# editable install during dev
+uv add --editable /path/to/Savant_API_Extractor
+
+# or from git
+uv add "savant-api-extractor @ git+https://github.com/MTBLL/Savant_API_Extractor.git"
+```
+
+### Import map — what each entry point pulls in
+
+The three main consumer-facing entry points have very different import footprints. Pick the one that matches your use case and avoid pulling in dependencies you don't need.
+
+| Import path | What it gives you | Loads pandas/numpy? |
+|---|---|---|
+| `from savant_api_extractor.mlb_statsapi import fetch_probable_pitchers` | Daily probable pitchers via MLB StatsAPI | **No** — only `requests` + stdlib |
+| `from savant_api_extractor.handlers import LeaderboardHandler` <br>`from savant_api_extractor.leaderboards import {config}` | Generic on-demand leaderboard CSV puller (ETL or RT tier) | **Yes** — returns DataFrames |
+| `from savant_api_extractor.runner.savant_runner import SavantRunner` | Full bulk-extraction orchestrator (splits + ETL leaderboards) | **Yes** — full stack |
+
+**For an analytics app pulling probable pitchers + ad-hoc matchup drill-downs**, the lightweight path is:
+
+```python
+# Probable pitchers — no pandas dependency
+from savant_api_extractor.mlb_statsapi import fetch_probable_pitchers
+
+# RT-tier leaderboard drill-down — pandas DataFrame
+from savant_api_extractor.handlers import LeaderboardHandler
+from savant_api_extractor.leaderboards import pitch_arsenals, pitch_movement
+
+slate    = fetch_probable_pitchers("2026-05-13")           # list[dict]
+handler  = LeaderboardHandler()
+arsenal  = handler.extract(pitch_arsenals.CONFIG, year="2026")   # DataFrame
+movement = handler.extract(pitch_movement.CONFIG, year="2026")   # DataFrame
+```
+
+The `SavantRunner` and the bulk-runner machinery do **not** load unless you explicitly import them. Same for the `BatterHandler` / `PitcherHandler` (which target the splits endpoint and are only used by the runner). An analytics app that just needs probable pitchers + on-demand leaderboards never touches those code paths.
+
+### Sub-package overview
+
+| Sub-package | Purpose | Loads when imported |
+|---|---|---|
+| `savant_api_extractor.mlb_statsapi` | MLB StatsAPI wrappers (probable pitchers today; player metadata etc. future) | `requests`, stdlib |
+| `savant_api_extractor.handlers` | HTTP+CSV handler classes (BatterHandler, PitcherHandler, LeaderboardHandler) | pandas, requests |
+| `savant_api_extractor.leaderboards` | LeaderboardConfig dataclasses for every Savant leaderboard (ETL and RT tiers) | lightweight (just dataclasses) |
+| `savant_api_extractor.controller` | SavantController — builds query params for the splits endpoint | imports handlers ⇒ pandas |
+| `savant_api_extractor.runner` | SavantRunner — bulk-extraction orchestrator | full stack |
+| `savant_api_extractor.utils` | Logger, mappings, thresholds, name parser. `percentile_ranks` (pandas) lives here too but is NOT re-exported by the package — import it via the full path if needed | stdlib only via the re-exports |
+
+### Computing percentile ranks downstream
+
+When you want percentile ranks computed against your own cohort (see [Percentile Ranks](#percentile-ranks-computed-downstream-not-at-extract-time) below), import the utility via the **full path** — the `utils/__init__.py` deliberately does not re-export it to keep the package's lazy-import surface clean:
+
+```python
+from savant_api_extractor.utils.percentile_ranks import add_percentile_rank_columns
+```
+
 ## Output Files
 
 A full `all` extraction writes **ten JSON files** to the output directory:
@@ -218,6 +281,52 @@ strider_breakers = movement_df[
 This package is the **network layer only**. RT-tier responses are not cached by the handler — every `extract()` call hits Savant. Analytics-app callers should layer their own caching (per-request, per-day, etc.) appropriate to their query patterns. The handler is idempotent within a season, so a 1-day cache TTL is usually sufficient for these endpoints.
 
 For full per-endpoint column lists, header mappings, and live snapshot samples, see [`savant_api_extractor/leaderboards/SPECS.md`](savant_api_extractor/leaderboards/SPECS.md) (Part II: RT-tier endpoints).
+
+## MLB StatsAPI integration
+
+Alongside the Savant client, this package ships a small wrapper around the official **MLB StatsAPI** (`statsapi.mlb.com`) — public, no auth required. It lives here because the same analytics pipeline that consumes Savant data also needs daily probable-pitcher info to drive matchup views, and there's no reason to scrape the Savant `/probable-pitchers` HTML page when the canonical source returns clean JSON.
+
+### `fetch_probable_pitchers(date)` — daily slate
+
+```python
+from datetime import date
+from savant_api_extractor.mlb_statsapi import fetch_probable_pitchers
+
+slate = fetch_probable_pitchers(date.today())
+# Returns: list[dict], one per scheduled game
+```
+
+Each row carries:
+
+| Field | Type | Example |
+|---|---|---|
+| `gamePk` | int | `776315` |
+| `gameDate` | str (ISO 8601 UTC) | `"2025-09-15T22:45:00Z"` |
+| `gameState` | str | `"Preview"` / `"Live"` / `"Final"` |
+| `away_team_code` | str | `"atl"` (3-letter MLB internal code) |
+| `away_team_name` | str | `"Atlanta Braves"` |
+| `away_probable_id` | int \| None | `675911` (None if TBD) |
+| `away_probable_name` | str \| None | `"Spencer Strider"` (None if TBD) |
+| `home_team_code` | str | `"was"` |
+| `home_team_name` | str | `"Washington Nationals"` |
+| `home_probable_id` | int \| None | `680730` |
+| `home_probable_name` | str \| None | `"Mitchell Parker"` |
+
+Notes:
+- **Team codes are MLB's 3-letter lowercase internal codes** (`nya` for Yankees, `lan` for Dodgers), not the more familiar `NYY`/`LAD` codes used in Statcast. If your downstream needs the Statcast form, map at the consumer.
+- **Probable pitcher is `None` when not announced.** Don't expect both teams' pitchers to be set for every game — schedules often announce one side first.
+- **No caching here.** Like the RT-tier leaderboard configs, this is the network layer only — call from your analytics app and cache per-request as appropriate.
+
+### Endpoint hit
+
+```
+GET https://statsapi.mlb.com/api/v1/schedule
+    ?sportId=1
+    &date=YYYY-MM-DD
+    &hydrate=probablePitcher,team,lineups
+```
+
+The MLB StatsAPI is undocumented officially but publicly accessible; community references at [toddrob99/MLB-StatsAPI](https://github.com/toddrob99/MLB-StatsAPI).
 
 ### Barrel and Hard-Hit Metrics
 
