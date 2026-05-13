@@ -19,7 +19,7 @@ import pytest
 import requests
 
 from savant_api_extractor.handlers import LeaderboardHandler
-from savant_api_extractor.leaderboards import ETL_TIER_CONFIGS
+from savant_api_extractor.leaderboards import ETL_TIER_CONFIGS, RT_TIER_CONFIGS
 from savant_api_extractor.leaderboards._config import LeaderboardConfig
 
 
@@ -165,3 +165,77 @@ class TestLeaderboardHandler:
         assert set(ohtani_rows["pitch_type"].unique()).issubset(
             {"FF", "SI", "FC", "SL", "CU", "CH", "FS", "KC", "ST", "SV"}
         )
+
+    @pytest.mark.parametrize("config", RT_TIER_CONFIGS, ids=_idfn)
+    @patch("savant_api_extractor.handlers.base_handler.requests.get")
+    def test_extract_parses_each_rt_fixture(
+        self,
+        mock_get: MagicMock,
+        config: LeaderboardConfig,
+        leaderboard_fixtures: dict[str, str],
+    ) -> None:
+        """RT-tier parallel of the ETL parameterized test.
+
+        Same contract — URL construction, column renaming, identity-column
+        presence, name parsing (when applicable), Ohtani anchoring. Different
+        config set. RT-tier configs are not invoked by the bulk runner; they
+        live here for analytics-app on-demand calls and need the same
+        config-correctness guarantees the ETL configs get.
+        """
+        mock_response = MagicMock()
+        mock_response.text = leaderboard_fixtures[config.name]
+        mock_response.raise_for_status = MagicMock()
+        mock_get.return_value = mock_response
+
+        handler = LeaderboardHandler()
+        df = handler.extract(config, year="2026")
+
+        assert isinstance(df, pd.DataFrame)
+        assert len(df) > 0
+
+        mapped_targets = set(config.header_mappings.values())
+        name_parser_cols = {"first_name", "last_name", "name_ascii", "slug"}
+        allowed = mapped_targets | name_parser_cols
+        assert set(df.columns) <= allowed, (
+            f"Unexpected columns in {config.name}: "
+            f"{set(df.columns) - allowed}"
+        )
+
+        for identity_col in config.identity_columns:
+            assert identity_col in df.columns, (
+                f"Missing identity column {identity_col!r} in {config.name}"
+            )
+
+        assert not any(col.endswith("_pct_rnk") for col in df.columns)
+
+        if "name" in mapped_targets:
+            assert {"first_name", "last_name", "name_ascii", "slug"} <= set(
+                df.columns
+            )
+            # Ohtani anchor — present in all 6 RT fixtures (two-way LAD player
+            # with batter & pitcher data across the relevant endpoints).
+            ohtani = df[df["name"] == "Ohtani, Shohei"]
+            assert not ohtani.empty, f"Ohtani absent from {config.name}"
+            row = ohtani.iloc[0]
+            assert row["first_name"] == "Shohei"
+            assert row["last_name"] == "Ohtani"
+
+        mock_get.assert_called_once()
+        _, kwargs = mock_get.call_args
+        assert kwargs["params"]["csv"] == "true"
+        assert kwargs["params"]["year"] == "2026"
+
+
+def test_etl_and_rt_tiers_are_disjoint() -> None:
+    """RT-tier configs must not also appear in ETL_TIER_CONFIGS.
+
+    Catches the regression of accidentally registering an RT config in the
+    ETL list (which would cause the bulk runner to pull it every time and
+    defeat the cadence-separation that the tier split exists for). Compares
+    by config.name since `LeaderboardConfig` is frozen but identity-by-name
+    is what the JSONExporter uses for filename collisions.
+    """
+    etl_names = {c.name for c in ETL_TIER_CONFIGS}
+    rt_names = {c.name for c in RT_TIER_CONFIGS}
+    overlap = etl_names & rt_names
+    assert not overlap, f"configs appear in both tiers: {sorted(overlap)}"
