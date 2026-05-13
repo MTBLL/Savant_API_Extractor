@@ -170,3 +170,42 @@ def test_runner_run_all_exports_json(
     # Percentile-rank columns are no longer emitted at extract time.
     assert not any(k.endswith("_pct_rnk") for k in batters_data[0].keys())
     assert not any(k.endswith("_pct_rnk") for k in pitchers_data[0].keys())
+
+
+def test_runner_split_invariant_R_L_subset_of_all(
+    tmp_path: Path,
+    batters_split_fixtures: dict[str, str],
+    pitchers_split_fixtures: dict[str, str],
+) -> None:
+    """Invariant: every player in vs_R or vs_L also appears in `all`.
+
+    Before the threshold fix, this could fail silently — sub-threshold
+    players appeared in R/L (ungated) but not in `all` (gated at min_pas=30),
+    breaking downstream joins. Asserting the invariant here pins it as a
+    structural guarantee.
+    """
+    runner = SavantRunner(
+        season="2026",
+        extraction_type="all",
+        output_dir=tmp_path,
+    )
+    with patch("savant_api_extractor.handlers.base_handler.requests.get") as mock_get:
+        mock_get.side_effect = [
+            _csv_response(batters_split_fixtures["all"]),
+            _csv_response(batters_split_fixtures["R"]),
+            _csv_response(batters_split_fixtures["L"]),
+            _csv_response(pitchers_split_fixtures["all"]),
+            _csv_response(pitchers_split_fixtures["R"]),
+            _csv_response(pitchers_split_fixtures["L"]),
+        ]
+        results = runner.run()
+
+    for role, df in (("batters", results["batters"]), ("pitchers", results["pitchers"])):
+        ids_all = set(df.loc[df["opp_hand"] == "all", "player_id"])
+        ids_R = set(df.loc[df["opp_hand"] == "R", "player_id"])
+        ids_L = set(df.loc[df["opp_hand"] == "L", "player_id"])
+        missing_from_all = (ids_R | ids_L) - ids_all
+        assert not missing_from_all, (
+            f"{role}: {len(missing_from_all)} player_ids appear in vs_R or "
+            f"vs_L but not in all — sample: {sorted(missing_from_all)[:5]}"
+        )
