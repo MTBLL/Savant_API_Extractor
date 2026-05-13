@@ -110,7 +110,11 @@ Each file is a JSON array of row objects, joinable on `player_id`. See [Leaderbo
 
 To skip the leaderboard pulls (splits only), construct the runner with `include_leaderboards=False`.
 
-## Downstream Schema Notes
+### Known follow-ups (not yet in the extract)
+
+These Savant data sources are intentionally **not** in the current extract; each has a separate planned implementation.
+
+- **Rolling-windows leaderboard** (`/leaderboard/rolling`) — Compares each player's most-recent N-PA window (50/100/250) to the prior N-PA window of the same size, surfacing a "trending up/down" delta on `ba`/`slg`/`woba`/`xba`/`xslg`/`xwoba`. The page is **state-inlined SSR** — the entire dataset (~2,400 rows across 6 categories) ships as a `var rolling = {...}` JavaScript variable inside a `<script>` tag, not via a separate XHR. `?csv=true` returns the same HTML. Extraction is a regex + `json.loads` parse of that variable; ~50ms per pull, no browser. Decision made in MTBL-163 (Option A); implementation tracked as a separate follow-up.
 
 Downstream consumers should treat each row as role-specific, handedness-split
 player-season data. The unique key for a row is the tuple
