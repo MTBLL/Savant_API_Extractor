@@ -18,7 +18,6 @@ from savant_api_extractor.utils.query_params import (
     HF_FLAG,
     HF_GAME_TYPE,
     HF_SEASON,
-    MIN_PLATE_APPEARANCES,
     PITCHER_THROWS,
     SORT_COL_XWOBA,
     SORT_COLUMN,
@@ -26,7 +25,7 @@ from savant_api_extractor.utils.query_params import (
     SORT_ORDER_ASC,
     SORT_ORDER_DESC,
 )
-from savant_api_extractor.utils.thresholds import ThresholdType, get_min_pas
+from savant_api_extractor.utils.thresholds import ThresholdType
 
 OPP_HAND_OVERALL: str = "all"
 OPP_HAND_R: str = "R"
@@ -58,9 +57,14 @@ class SavantController:
             player_type: "batters" or "pitchers"
             season: Season year (e.g., "2025").
             opp_hand: Opposing-side handedness split. "all" (default) returns
-                full-season stats subject to the configured min_pas threshold.
-                "R" or "L" filters to PAs against right/left-handed opponents
-                and drops the min_pas threshold per the splits policy.
+                full-season stats. "R" or "L" filters to PAs against
+                right/left-handed opponents.
+
+        All three splits are emitted ungated (no `min_pas` filter). Cohort
+        gating belongs in the analytics layer — emitting `all` ungated also
+        guarantees the structural invariant `set(R) ∪ set(L) ⊆ set(all)`,
+        which is otherwise silently violated for sub-threshold players who
+        appear in R/L but get filtered out of `all`.
 
         Returns:
             Dictionary of query parameters
@@ -90,17 +94,14 @@ class SavantController:
             HF_SEASON: season,
         }
 
-        if opp_hand == OPP_HAND_OVERALL:
-            min_pas = get_min_pas(self.threshold_type, player_type)
-            params[MIN_PLATE_APPEARANCES] = min_pas
-        elif opp_hand in (OPP_HAND_R, OPP_HAND_L):
+        if opp_hand in (OPP_HAND_R, OPP_HAND_L):
             split_param = (
                 PITCHER_THROWS
                 if player_type == ExtractionType.BATTER
                 else BATTER_STANDS
             )
             params[split_param] = opp_hand
-        else:
+        elif opp_hand != OPP_HAND_OVERALL:
             raise ValueError(f"Unsupported opp_hand: {opp_hand!r}")
 
         self.logger.debug(
@@ -125,8 +126,9 @@ class SavantController:
         Args:
             player_type: "batters" or "pitchers"
             season: Season year (e.g., "2025").
-            opp_hand: "all" for overall (threshold-gated) stats, "R" or "L" for
-                vs-RHP/vs-LHP (batters) or vs-RHB/vs-LHB (pitchers).
+            opp_hand: "all" for overall stats, "R" or "L" for vs-RHP/vs-LHP
+                (batters) or vs-RHB/vs-LHB (pitchers). All three are emitted
+                ungated; consumers gate downstream against their own cohort.
 
         Returns:
             DataFrame with player statistics, tagged with an opp_hand column.

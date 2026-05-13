@@ -93,11 +93,18 @@ against opposing handedness. The `opp_hand` column tags each row:
 
 Behavior notes:
 
-- **Threshold policy.** The `min_pas` threshold (`ThresholdType` in
-  `savant_api_extractor.utils.thresholds`) is applied **only to `"all"` rows**.
-  Split rows (`"R"`/`"L"`) are emitted with no minimum-PA gating so the dataset
-  retains long-tail platoon-only players. Consumers that need a minimum sample
-  for splits should filter downstream on `pa` (or equivalent counting stat).
+- **Threshold policy.** All three splits (`"all"`, `"R"`, `"L"`) are emitted
+  **ungated** — no `min_pas` filter is applied at extract time. Cohort
+  gating is a downstream concern and belongs in the analytics layer (filter
+  by `pa` after loading into DuckDB, against your own rostered-player cohort
+  rather than Savant's qualified pool). The `ThresholdType` enum still
+  controls regular-season vs. spring-training game-type selection, but no
+  longer injects a `min_pas` filter.
+- **Structural invariant: `set(R) ∪ set(L) ⊆ set(all)`.** Every player who
+  appears in a vs-RHP or vs-LHP split also has an overall row. This holds by
+  construction because all three splits are emitted with the same gating
+  policy (none). Downstream joins keyed on `(player_id, "all")` will not lose
+  rows that appear in the platoon splits.
 - **Sparsity.** A player who never faced an opposing-side pitcher of a given
   handedness does not appear in that split — the row is simply absent rather
   than null-filled.
