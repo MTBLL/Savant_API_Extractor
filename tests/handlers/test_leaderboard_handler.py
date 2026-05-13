@@ -107,6 +107,41 @@ class TestLeaderboardHandler:
             handler.extract(ETL_TIER_CONFIGS[0])
 
     @patch("savant_api_extractor.handlers.base_handler.requests.get")
+    def test_extract_skips_name_parsing_when_no_name_column(
+        self, mock_get: MagicMock
+    ) -> None:
+        """If a config doesn't map any column to `name`, name-parser is skipped.
+
+        Covers the False branch of the `if "name" in df.columns` conditional
+        in LeaderboardHandler.extract. Every ETL-tier config maps either
+        `last_name, first_name` or `player` to `name`, so this branch is
+        never exercised by the parameterized test above. Future RT-tier
+        configs that don't carry a name column (e.g., something keyed only
+        on player_id + a discriminator) will travel this path.
+        """
+        minimal_config = LeaderboardConfig(
+            name="test_no_name_column",
+            url_path="not-a-real-endpoint",
+            default_params={},
+            header_mappings={"player_id": "player_id"},  # no `name` target
+            identity_columns=("player_id",),
+        )
+
+        mock_response = MagicMock()
+        mock_response.text = '"player_id"\n660271\n592450\n'
+        mock_response.raise_for_status = MagicMock()
+        mock_get.return_value = mock_response
+
+        handler = LeaderboardHandler()
+        df = handler.extract(minimal_config)
+
+        assert list(df.columns) == ["player_id"]
+        # No name-parser-added columns when there's no source `name`
+        for col in ("name", "first_name", "last_name", "name_ascii", "slug"):
+            assert col not in df.columns
+        assert len(df) == 2
+
+    @patch("savant_api_extractor.handlers.base_handler.requests.get")
     def test_extract_long_format_on_pitch_type(
         self,
         mock_get: MagicMock,
