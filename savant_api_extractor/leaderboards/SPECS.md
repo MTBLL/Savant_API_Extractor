@@ -597,14 +597,18 @@ All raw columns are preserved: `id` → `player_id`, `name` → `name`, plus rat
 
 # Part III: State-inlined SSR leaderboards
 
-The endpoint below is **ETL-tier** (pulled by the bulk runner) but is **not** a
-`?csv=true` CSV endpoint. The page is *state-inlined SSR* — Savant renders the
-HTML and embeds the entire dataset as a `var rolling = {...};` JavaScript
-variable inside a `<script>` tag. `?csv=true` returns the same HTML. The
-`RollingHandler` fetches the HTML, regex-extracts the variable, and
-`json.loads`-es it. If Savant ever migrates this to a real XHR/JSON endpoint
-(consistent with their newer leaderboards), switch to that — it would be
-strictly simpler. See `handlers/rolling_handler.py`.
+The endpoints below are **not** `?csv=true` CSV endpoints. Each page is
+*state-inlined SSR* — Savant renders the HTML and embeds the entire dataset as
+a JavaScript variable assignment inside a `<script>` tag; `?csv=true` returns
+the same HTML. Each gets a dedicated handler that fetches the HTML,
+regex-extracts the variable, and `json.loads`-es it. If Savant ever migrates
+one to a real XHR/JSON endpoint (consistent with their newer leaderboards),
+switch to that — it would be strictly simpler.
+
+| Endpoint | Tier | Handler |
+|---|---|---|
+| SSR-1 `rolling` | ETL (bulk runner) | `handlers/rolling_handler.py` |
+| SSR-2 `birthday-index` | RT (analytics-app on-demand) | `handlers/birthday_index_handler.py` |
 
 ---
 
@@ -658,3 +662,60 @@ the name-parser `slug`.
 1.6 MB live page: each of the 6 categories trimmed to 3 rows, with the
 `<script>` wrapper and the `var rolling = {...};` assignment preserved verbatim
 so the extraction regex is exercised against representative markup.
+
+---
+
+## SSR-2. `birthday-index` — Sarah Langs' Birthday Index
+
+**URL:** `https://baseballsavant.mlb.com/birthday-index?type={batter,pitcher}`
+**Today (2026-05-14):** ~224 active batters / ~141 active pitchers × 33 columns (post-mapping + active filter, incl. name-parser additions)
+**Identity:** `(player_id, player_type)`
+**Tier:** RT — `BirthdayIndexHandler`, analytics-app on-demand. NOT pulled by the bulk runner.
+
+The "Birthday Index" is a Savant-computed stat: a player's wOBA on their
+birthday vs. all other dates, sample-weighted by birthday PAs. Fantasy use:
+streaming-pitcher selection and bench/platoon start-sit — the `daysUntil`
+column makes the "look a couple days out" workflow native.
+
+The page embeds two `const` arrays in a `<script>` block: `birthdayData` (the
+"Upcoming Birthdays" table — the one the handler extracts) and `todayData`.
+**Note `const`, not `var`** — the `RollingHandler` regex would not match.
+`?type=pitcher` flips the page to the pitcher table; the handler takes a
+`player_type` arg.
+
+### Active-player filter
+The raw `birthdayData` array is ~90% retired/historical players (the page's
+birthday data goes back to 1969): ~2,069 batter rows of which only ~224 are
+active, ~1,274 pitcher rows of which ~141 are active. `extract` filters to
+`is_player_active == 1` before mapping — the `is_player_active` /
+`is_player_deceased` flags are consumed by the filter and not emitted.
+
+### Header mappings
+Mostly identity — the raw column names are already clean. Dropped by omission:
+`player_name` (dup of `name`), `id` (dup of `player_id`), `is_player_active` /
+`is_player_deceased` (filter inputs), the `*_hidden` sort-helpers, and
+`dateString` (a display string). Kept: `player_id`, `name`, `player_type`,
+`actual_birthday`, `birth_day_noyear`, `age`, `daysUntil`, `isBirthday`,
+`birthday_index`, `birthday_games`, `birthday_pa`, the
+`birthday_{BA,OPS,wOBA}` + `non_birthday_*` + `*_diff` split triples, and the
+`birthday_hit_*` / `birthday_strikeout` / `birthday_walk` / `*_percent`
+counting + rate stats.
+
+### Sample row (raw)
+```json
+{
+  "player_name": "Cole Young", "name": "Cole Young",
+  "player_id": 702284, "id": 702284, "player_type": "Batter",
+  "is_player_active": 1, "is_player_deceased": 0,
+  "actual_birthday": "2003-07-29T00:00:00.000Z", "birth_day_noyear": "7-29",
+  "birthday_index": -1, "birthday_games": 1, "birthday_pa": 4,
+  "birthday_BA": 0, "non_birthday_BA": 0.23, "birthday_BA_diff": -0.23
+}
+```
+
+### Fixture
+`tests/fixtures/leaderboards/birthday_index.html` — a trimmed (~5 KB) capture
+of the ~1.95 MB live page: the `birthdayData` array cut to **3 active + 2
+inactive rows** so the active-player filter is exercised, with the `<script>`
+wrapper and the `const` declarations preserved verbatim so the extraction
+regex runs as in the wild.
