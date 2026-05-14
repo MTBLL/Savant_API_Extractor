@@ -13,6 +13,7 @@ from savant_api_extractor.controller.savant_controller import (
     SavantController,
 )
 from savant_api_extractor.handlers.leaderboard_handler import LeaderboardHandler
+from savant_api_extractor.handlers.rolling_handler import RollingHandler
 from savant_api_extractor.leaderboards import ETL_TIER_CONFIGS
 from savant_api_extractor.utils.extraction_type import ExtractionType
 from savant_api_extractor.utils.json_exporter import JSONExporter
@@ -46,9 +47,10 @@ class SavantRunner:
             extraction_type: Type of data to extract ("batters", "pitchers", "all")
             threshold_type: Threshold type for minimum plate appearances
             output_dir: Directory to save output files (default: current directory)
-            include_leaderboards: Whether to pull ETL-tier leaderboards alongside
-                the statcast_search splits. Defaults to True. Set False to run a
-                splits-only extraction (useful for iterating on splits behavior).
+            include_leaderboards: Whether to pull the ETL-tier leaderboards and
+                the rolling-windows leaderboard alongside the statcast_search
+                splits. Defaults to True. Set False to run a splits-only
+                extraction (useful for iterating on splits behavior).
         """
         self.logger: Logger = Logger(f"{__name__}.SavantRunner")
         normalized_type = extraction_type.lower()
@@ -63,6 +65,7 @@ class SavantRunner:
 
         self.controller: SavantController = SavantController(threshold_type)
         self.leaderboard_handler: LeaderboardHandler = LeaderboardHandler()
+        self.rolling_handler: RollingHandler = RollingHandler()
         self.output_dir: Path = output_dir or Path.cwd()
         self.exporter: JSONExporter = JSONExporter(self.output_dir)
         self.logger.info(f"Runner initialized with output directory: {self.output_dir}")
@@ -86,15 +89,16 @@ class SavantRunner:
         """
         Extract and export player statistics.
 
-        Every HTTP fetch a run makes — the statcast_search handedness splits
-        and the ETL-tier leaderboard pulls — is dispatched through a single
-        thread pool so they interleave instead of running as two sequential
-        phases. The pool is capped at `FETCH_MAX_WORKERS` to stay polite to
-        Savant.
+        Every HTTP fetch a run makes — the statcast_search handedness splits,
+        the ETL-tier leaderboard pulls, and the state-inlined rolling-windows
+        leaderboard — is dispatched through a single thread pool so they
+        interleave instead of running as sequential phases. The pool is
+        capped at `FETCH_MAX_WORKERS` to stay polite to Savant.
 
         Returns:
             Dictionary of DataFrames keyed by "batters"/"pitchers" (the
-            statcast_search splits) and by `config.name` (the leaderboards).
+            statcast_search splits), by `config.name` (the leaderboards), and
+            "rolling" (the rolling-windows leaderboard).
         """
         self.logger.info("Running extraction")
         extraction_map = {
@@ -141,6 +145,12 @@ class SavantRunner:
                         self.leaderboard_handler.extract, cfg, year=self.season
                     )
                     lb_futures[fut] = cfg.name
+
+                # The rolling-windows leaderboard is state-inlined SSR, not a
+                # CSV endpoint — its own handler, but it joins the same pool
+                # and the same name-keyed result routing (-> savant_rolling_*).
+                rolling_fut = ex.submit(self.rolling_handler.extract)
+                lb_futures[rolling_fut] = "rolling"
 
             for fut in as_completed([*split_futures, *lb_futures]):
                 try:

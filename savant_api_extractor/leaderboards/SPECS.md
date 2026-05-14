@@ -592,3 +592,69 @@ All raw columns are preserved: `id` → `player_id`, `name` → `name`, plus rat
   "pull_air_rate": ...
 }
 ```
+
+---
+
+# Part III: State-inlined SSR leaderboards
+
+The endpoint below is **ETL-tier** (pulled by the bulk runner) but is **not** a
+`?csv=true` CSV endpoint. The page is *state-inlined SSR* — Savant renders the
+HTML and embeds the entire dataset as a `var rolling = {...};` JavaScript
+variable inside a `<script>` tag. `?csv=true` returns the same HTML. The
+`RollingHandler` fetches the HTML, regex-extracts the variable, and
+`json.loads`-es it. If Savant ever migrates this to a real XHR/JSON endpoint
+(consistent with their newer leaderboards), switch to that — it would be
+strictly simpler. See `handlers/rolling_handler.py`.
+
+---
+
+## SSR-1. `rolling` — rolling-window form leaderboard
+
+**URL:** `https://baseballsavant.mlb.com/leaderboard/rolling`
+**Today (2026-05-14):** ~2,400 rows × 27 columns (post-mapping, incl. name-parser additions)
+**Identity:** `(player_id, cat, cat_bin)` ← **long-format** on role × window size
+
+The inlined `var rolling` object has 6 keys — `{Batter,Pitcher} × {50,100,250}`
+(role × window size in PA) — each holding a row list. The handler flattens all
+6 lists into one long-format DataFrame; every row already carries `cat` and
+`cat_bin`, so no identity columns need to be derived from the dict key.
+
+Each row compares a player's most-recent-N-PA window to the prior-N-PA window
+of the same size, across six rate stats. Raw columns: `last_x_<stat>`,
+`penultimate_x_<stat>`, `<stat>_delta` for `<stat>` in
+`{ba, slg, woba, xba, xslg, xwoba}`.
+
+### Header mappings
+| raw | renamed |
+|---|---|
+| `player_id` | `player_id` |
+| `player_name` | `name` |
+| `player_team_id` | `player_team_id` |
+| `cat` | `cat` |
+| `cat_bin` | `cat_bin` |
+| `last_x_<stat>` | `last_<STAT>` |
+| `penultimate_x_<stat>` | `prev_<STAT>` |
+| `<stat>_delta` | `<STAT>_delta` |
+
+`<STAT>` is the conventional sabermetric casing: `ba`→`BA`, `slg`→`SLG`,
+`woba`→`wOBA`, `xba`→`xBA`, `xslg`→`xSLG`, `xwoba`→`xwOBA`. Savant's own `slug`
+and `type_cat_bin` columns are unmapped and dropped — `type_cat_bin` is
+redundant with `cat` + `cat_bin`, and Savant's `slug` format conflicts with
+the name-parser `slug`.
+
+### Sample row (raw, Batter50)
+```json
+{
+  "player_name": "Vientos, Mark", "player_id": 668901,
+  "player_team_id": 121, "cat": "Batter", "cat_bin": "50",
+  "last_x_xwoba": 0.487, "penultimate_x_xwoba": 0.219, "xwoba_delta": 0.268,
+  "last_x_woba": 0.35, "penultimate_x_woba": 0.178, "woba_delta": 0.172,
+  "last_x_ba": 0.239, "penultimate_x_ba": 0.149, "ba_delta": 0.09
+}
+```
+
+### Fixture
+`tests/fixtures/leaderboards/rolling.html` — a trimmed (~12 KB) capture of the
+1.6 MB live page: each of the 6 categories trimmed to 3 rows, with the
+`<script>` wrapper and the `var rolling = {...};` assignment preserved verbatim
+so the extraction regex is exercised against representative markup.
