@@ -30,6 +30,7 @@ from savant_api_extractor.leaderboards import (
     pitcher_arm_angles,
     sprint_speed,
     statcast,
+    swing_take,
 )
 from savant_api_extractor.leaderboards._config import LeaderboardConfig
 
@@ -45,6 +46,8 @@ ETL_TIER_CONFIGS: tuple[LeaderboardConfig, ...] = (
     pitch_arsenal_stats.BATTER,
     pitch_arsenal_stats.PITCHER,
     sprint_speed.CONFIG,
+    swing_take.BATTER,
+    swing_take.PITCHER,
 )
 
 RT_TIER_CONFIGS: tuple[LeaderboardConfig, ...] = (
@@ -66,6 +69,7 @@ __all__ = [
     "home_runs",
     "pitch_arsenal_stats",
     "sprint_speed",
+    "swing_take",
     # RT config modules
     "pitch_arsenals",
     "pitch_movement",

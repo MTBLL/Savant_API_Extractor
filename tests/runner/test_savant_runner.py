@@ -128,7 +128,7 @@ def test_runner_run_batter_returns_dict(
     tmp_path: Path,
     batters_split_fixtures: dict[str, str],
 ) -> None:
-    """Runner makes 3 HTTP calls per role (all → R → L) and concats them."""
+    """Runner makes 3 HTTP calls for the batter splits and concats them."""
     runner = SavantRunner(
         season="2026",
         extraction_type="batters",
@@ -136,14 +136,16 @@ def test_runner_run_batter_returns_dict(
         include_leaderboards=False,  # focus this test on splits behavior
     )
 
-    with patch("savant_api_extractor.handlers.base_handler.requests.get") as mock_get:
-        # Order matches OPP_HAND_SPLITS = ("all", "R", "L")
-        mock_get.side_effect = [
-            _csv_response(batters_split_fixtures["all"]),
-            _csv_response(batters_split_fixtures["R"]),
-            _csv_response(batters_split_fixtures["L"]),
-        ]
-
+    # Fetches run through a thread pool now — route by URL rather than
+    # relying on a fixed call order.
+    router = _build_url_router(
+        splits_fixtures={"batter": batters_split_fixtures},
+        leaderboard_fixtures={},
+    )
+    with patch(
+        "savant_api_extractor.handlers.base_handler.requests.get",
+        side_effect=router,
+    ) as mock_get:
         results = runner.run()
 
     assert mock_get.call_count == 3
@@ -187,17 +189,19 @@ def test_runner_run_all_exports_json(
         include_leaderboards=False,  # focus this test on splits behavior
     )
 
-    with patch("savant_api_extractor.handlers.base_handler.requests.get") as mock_get:
-        # Runner iterates extraction_types [BATTER, PITCHER]; for each, splits all → R → L
-        mock_get.side_effect = [
-            _csv_response(batters_split_fixtures["all"]),
-            _csv_response(batters_split_fixtures["R"]),
-            _csv_response(batters_split_fixtures["L"]),
-            _csv_response(pitchers_split_fixtures["all"]),
-            _csv_response(pitchers_split_fixtures["R"]),
-            _csv_response(pitchers_split_fixtures["L"]),
-        ]
-
+    # Fetches run through a thread pool now — route by URL rather than
+    # relying on a fixed call order.
+    router = _build_url_router(
+        splits_fixtures={
+            "batter": batters_split_fixtures,
+            "pitcher": pitchers_split_fixtures,
+        },
+        leaderboard_fixtures={},
+    )
+    with patch(
+        "savant_api_extractor.handlers.base_handler.requests.get",
+        side_effect=router,
+    ) as mock_get:
         results = runner.run()
 
     assert mock_get.call_count == 6
@@ -242,7 +246,7 @@ def test_runner_run_all_with_leaderboards(
     pitchers_split_fixtures: dict[str, str],
     leaderboard_fixtures: dict[str, str],
 ) -> None:
-    """End-to-end: 6 split calls + 8 leaderboard calls → 10 output files."""
+    """End-to-end: 6 split calls + one call per ETL config, one file per result."""
     runner = SavantRunner(
         season="2026",
         extraction_type="all",
@@ -264,11 +268,12 @@ def test_runner_run_all_with_leaderboards(
     ) as mock_get:
         results = runner.run()
 
-    # 6 split calls + 7 leaderboard calls (expected_statistics_batter shed
-    # — its columns are now in the batter splits export via SHARED_HEADER_MAPPING)
+    # 6 split calls + one call per ETL-tier config. (expected_statistics_batter
+    # is intentionally not an ETL config — its columns live in the batter
+    # splits export — so the count tracks len(ETL_TIER_CONFIGS).)
     assert mock_get.call_count == 6 + len(ETL_TIER_CONFIGS)
 
-    # Results dict has 2 split keys + 8 leaderboard keys
+    # Results dict has 2 split keys + one key per ETL-tier config
     expected_keys = {"batters", "pitchers"} | {c.name for c in ETL_TIER_CONFIGS}
     assert set(results.keys()) == expected_keys
 
@@ -299,10 +304,10 @@ def test_runner_leaderboard_failure_logs_and_reraises(
 ) -> None:
     """When a leaderboard pull fails, the runner logs which one failed and re-raises.
 
-    Exercises `_extract_leaderboards`'s exception path (the `try/except Exception
-    as e` block around `future.result()`). The split calls succeed normally; the
-    leaderboard handler is patched to raise on the first call, simulating a Savant
-    outage / parse failure for one of the leaderboards.
+    Exercises the exception path of the flat fetch pool in `run()` (the
+    `try/except` around `future.result()`). The split calls succeed normally;
+    the leaderboard handler is patched to raise, simulating a Savant outage /
+    parse failure for a leaderboard.
     """
     runner = SavantRunner(
         season="2026",
@@ -311,30 +316,67 @@ def test_runner_leaderboard_failure_logs_and_reraises(
         include_leaderboards=True,
     )
 
+    # Splits route by URL; leaderboard calls never reach requests.get because
+    # leaderboard_handler.extract is patched to raise before it gets there.
+    router = _build_url_router(
+        splits_fixtures={
+            "batter": batters_split_fixtures,
+            "pitcher": pitchers_split_fixtures,
+        },
+        leaderboard_fixtures={},
+    )
     with patch(
-        "savant_api_extractor.handlers.base_handler.requests.get"
-    ) as mock_get, patch.object(
+        "savant_api_extractor.handlers.base_handler.requests.get",
+        side_effect=router,
+    ), patch.object(
         runner.leaderboard_handler,
         "extract",
         side_effect=RuntimeError("simulated leaderboard failure"),
     ):
-        mock_get.side_effect = [
-            _csv_response(batters_split_fixtures["all"]),
-            _csv_response(batters_split_fixtures["R"]),
-            _csv_response(batters_split_fixtures["L"]),
-            _csv_response(pitchers_split_fixtures["all"]),
-            _csv_response(pitchers_split_fixtures["R"]),
-            _csv_response(pitchers_split_fixtures["L"]),
-        ]
-
         with pytest.raises(RuntimeError, match="simulated leaderboard failure"):
             runner.run()
 
-    # The runner logged which leaderboard failed before re-raising
+    # The runner logged which fetch failed before re-raising.
     assert any(
-        "failed: simulated leaderboard failure" in record.message
+        "Fetch failed [leaderboard" in record.message
+        and "simulated leaderboard failure" in record.message
         for record in caplog.records
     ), f"expected failure log line; got records: {[r.message for r in caplog.records]}"
+
+
+def test_runner_split_failure_logs_and_reraises(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """When a statcast_search split fetch fails, the runner logs which split
+    failed and re-raises.
+
+    Mirror of the leaderboard-failure test for the other branch of the flat
+    fetch pool's exception handler — here the controller (splits) is patched
+    to raise. `include_leaderboards=False` keeps the pool to just the 3 split
+    fetches, so the split-failure path is the only one that can fire.
+    """
+    runner = SavantRunner(
+        season="2026",
+        extraction_type="batters",
+        output_dir=tmp_path,
+        include_leaderboards=False,
+    )
+
+    with patch.object(
+        runner.controller,
+        "extract",
+        side_effect=RuntimeError("simulated split failure"),
+    ):
+        with pytest.raises(RuntimeError, match="simulated split failure"):
+            runner.run()
+
+    # The runner logged which split failed before re-raising.
+    assert any(
+        "Fetch failed [split batters/" in record.message
+        and "simulated split failure" in record.message
+        for record in caplog.records
+    ), f"expected split failure log line; got records: {[r.message for r in caplog.records]}"
 
 
 def test_runner_split_invariant_R_L_subset_of_all(
@@ -357,15 +399,17 @@ def test_runner_split_invariant_R_L_subset_of_all(
         output_dir=tmp_path,
         include_leaderboards=False,
     )
-    with patch("savant_api_extractor.handlers.base_handler.requests.get") as mock_get:
-        mock_get.side_effect = [
-            _csv_response(batters_split_fixtures["all"]),
-            _csv_response(batters_split_fixtures["R"]),
-            _csv_response(batters_split_fixtures["L"]),
-            _csv_response(pitchers_split_fixtures["all"]),
-            _csv_response(pitchers_split_fixtures["R"]),
-            _csv_response(pitchers_split_fixtures["L"]),
-        ]
+    router = _build_url_router(
+        splits_fixtures={
+            "batter": batters_split_fixtures,
+            "pitcher": pitchers_split_fixtures,
+        },
+        leaderboard_fixtures={},
+    )
+    with patch(
+        "savant_api_extractor.handlers.base_handler.requests.get",
+        side_effect=router,
+    ):
         results = runner.run()
 
     for role, df in (("batters", results["batters"]), ("pitchers", results["pitchers"])):
