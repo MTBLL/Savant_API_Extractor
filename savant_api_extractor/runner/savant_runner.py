@@ -1,10 +1,12 @@
 """Runner for orchestrating the Savant API extraction process."""
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from __future__ import annotations
+
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from pathlib import Path
 
 import pandas as pd
 from pandas.core.frame import DataFrame
-from pathlib import Path
 
 from savant_api_extractor.controller.savant_controller import (
     OPP_HAND_SPLITS,
@@ -17,8 +19,12 @@ from savant_api_extractor.utils.json_exporter import JSONExporter
 from savant_api_extractor.utils.logger import Logger
 from savant_api_extractor.utils.thresholds import ThresholdType
 
-# Parallelism for the leaderboard pulls — keep modest to stay polite to Savant.
-LEADERBOARD_MAX_WORKERS: int = 4
+# One flat thread pool covers every HTTP fetch a run makes — the
+# statcast_search handedness splits and the ETL-tier leaderboard pulls,
+# interleaved rather than run as two sequential phases. Capped modest to
+# stay polite to Savant; more concurrency risks rate-limiting, a worse
+# outcome than a slightly slower run.
+FETCH_MAX_WORKERS: int = 4
 
 
 class SavantRunner:
@@ -76,19 +82,19 @@ class SavantRunner:
         """
         return self.exporter.export(data)
 
-    def run(
-        self,
-    ) -> dict[str, DataFrame]:
+    def run(self) -> dict[str, DataFrame]:
         """
         Extract and export player statistics.
 
-        Args:
-            threshold_type: Threshold type for minimum plate appearances
-            season: Season year (e.g., "2025"). If None, uses current year logic.
-            output_filename: Output filename (without extension)
+        Every HTTP fetch a run makes — the statcast_search handedness splits
+        and the ETL-tier leaderboard pulls — is dispatched through a single
+        thread pool so they interleave instead of running as two sequential
+        phases. The pool is capped at `FETCH_MAX_WORKERS` to stay polite to
+        Savant.
 
         Returns:
-            Dictionary of DataFrames keyed by "batters" and/or "pitchers"
+            Dictionary of DataFrames keyed by "batters"/"pitchers" (the
+            statcast_search splits) and by `config.name` (the leaderboards).
         """
         self.logger.info("Running extraction")
         extraction_map = {
@@ -102,51 +108,62 @@ class SavantRunner:
             extraction_types = [self.extraction_method]
 
         results: dict[str, DataFrame] = {}
+        # statcast_search splits arrive per (role, opp_hand). Collect them
+        # keyed by opp_hand so the per-role concat can run in a fixed
+        # all->R->L order regardless of which future finishes first.
+        split_frames: dict[str, dict[str, DataFrame]] = {
+            extraction_map[et]: {} for et in extraction_types
+        }
 
-        # statcast_search handedness splits (existing behavior — per-role,
-        # 3 HTTP calls each, concatenated into one long-format DataFrame).
-        for extraction_type in extraction_types:
-            split_frames = [
-                self.controller.extract(extraction_type, self.season, opp_hand=h)
-                for h in OPP_HAND_SPLITS
-            ]
-            results[extraction_map[extraction_type]] = pd.concat(
-                split_frames, ignore_index=True
+        self.logger.info(f"Dispatching fetches (max_workers={FETCH_MAX_WORKERS})")
+        with ThreadPoolExecutor(max_workers=FETCH_MAX_WORKERS) as ex:
+            split_futures: dict[Future[DataFrame], tuple[str, str]] = {}
+            lb_futures: dict[Future[DataFrame], str] = {}
+
+            # statcast_search handedness splits — 3 calls per role.
+            for extraction_type in extraction_types:
+                role = extraction_map[extraction_type]
+                for opp_hand in OPP_HAND_SPLITS:
+                    fut = ex.submit(
+                        self.controller.extract,
+                        extraction_type,
+                        self.season,
+                        opp_hand=opp_hand,
+                    )
+                    split_futures[fut] = (role, opp_hand)
+
+            # ETL-tier leaderboards — one call per config, keyed by
+            # `config.name` (which the JSONExporter turns into the output
+            # filename `savant_{config.name}_{timestamp}.json`).
+            if self.include_leaderboards:
+                for cfg in ETL_TIER_CONFIGS:
+                    fut = ex.submit(
+                        self.leaderboard_handler.extract, cfg, year=self.season
+                    )
+                    lb_futures[fut] = cfg.name
+
+            for fut in as_completed([*split_futures, *lb_futures]):
+                try:
+                    frame = fut.result()
+                except Exception as e:
+                    if fut in split_futures:
+                        role, opp_hand = split_futures[fut]
+                        label = f"split {role}/{opp_hand}"
+                    else:
+                        label = f"leaderboard {lb_futures[fut]}"
+                    self.logger.error(f"Fetch failed [{label}]: {e}")
+                    raise
+                if fut in split_futures:
+                    role, opp_hand = split_futures[fut]
+                    split_frames[role][opp_hand] = frame
+                else:
+                    results[lb_futures[fut]] = frame
+
+        # Concatenate each role's three splits in canonical all->R->L order.
+        for role, by_hand in split_frames.items():
+            results[role] = pd.concat(
+                [by_hand[h] for h in OPP_HAND_SPLITS], ignore_index=True
             )
-
-        # ETL-tier leaderboards (independent of extraction_method — these are
-        # cross-cutting auxiliary tables, always pulled). Parallelized to keep
-        # total wall time under 1 min.
-        if self.include_leaderboards:
-            results.update(self._extract_leaderboards())
 
         self._export_to_json(results)
         return results
-
-    def _extract_leaderboards(self) -> dict[str, DataFrame]:
-        """Pull all ETL-tier leaderboards in parallel.
-
-        Each leaderboard becomes one entry in the returned dict, keyed by
-        `config.name` (which the JSONExporter uses to construct the output
-        filename — `savant_{config.name}_{timestamp}.json`).
-        """
-        self.logger.info(
-            f"Pulling {len(ETL_TIER_CONFIGS)} ETL-tier leaderboards "
-            f"(max_workers={LEADERBOARD_MAX_WORKERS})"
-        )
-        out: dict[str, DataFrame] = {}
-        with ThreadPoolExecutor(max_workers=LEADERBOARD_MAX_WORKERS) as ex:
-            future_to_config = {
-                ex.submit(
-                    self.leaderboard_handler.extract, cfg, year=self.season
-                ): cfg
-                for cfg in ETL_TIER_CONFIGS
-            }
-            for future in as_completed(future_to_config):
-                cfg = future_to_config[future]
-                try:
-                    out[cfg.name] = future.result()
-                except Exception as e:
-                    self.logger.error(f"Leaderboard {cfg.name} failed: {e}")
-                    raise
-        return out
