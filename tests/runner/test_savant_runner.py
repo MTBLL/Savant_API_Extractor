@@ -344,6 +344,41 @@ def test_runner_leaderboard_failure_logs_and_reraises(
     ), f"expected failure log line; got records: {[r.message for r in caplog.records]}"
 
 
+def test_runner_split_failure_logs_and_reraises(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """When a statcast_search split fetch fails, the runner logs which split
+    failed and re-raises.
+
+    Mirror of the leaderboard-failure test for the other branch of the flat
+    fetch pool's exception handler — here the controller (splits) is patched
+    to raise. `include_leaderboards=False` keeps the pool to just the 3 split
+    fetches, so the split-failure path is the only one that can fire.
+    """
+    runner = SavantRunner(
+        season="2026",
+        extraction_type="batters",
+        output_dir=tmp_path,
+        include_leaderboards=False,
+    )
+
+    with patch.object(
+        runner.controller,
+        "extract",
+        side_effect=RuntimeError("simulated split failure"),
+    ):
+        with pytest.raises(RuntimeError, match="simulated split failure"):
+            runner.run()
+
+    # The runner logged which split failed before re-raising.
+    assert any(
+        "Fetch failed [split batters/" in record.message
+        and "simulated split failure" in record.message
+        for record in caplog.records
+    ), f"expected split failure log line; got records: {[r.message for r in caplog.records]}"
+
+
 def test_runner_split_invariant_R_L_subset_of_all(
     tmp_path: Path,
     batters_split_fixtures: dict[str, str],
