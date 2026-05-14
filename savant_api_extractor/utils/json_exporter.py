@@ -8,6 +8,7 @@ from typing import Any, Hashable
 import pandas as pd
 
 from savant_api_extractor.utils.logger import Logger
+from savant_api_extractor.utils.rounding import round_float_columns
 
 
 class JSONExporter:
@@ -63,6 +64,9 @@ class JSONExporter:
         """
         self.logger.info(f"Exporting data to JSON: {filename}")
         output_path = self.output_dir / f"{filename}.json"
+        # Round float columns half-up to a fixed precision so every exported
+        # artifact is consistent. Int identity columns pass through untouched.
+        df = round_float_columns(df)
         json_data: list[dict[Hashable, Any]] = df.to_dict(orient="records")
 
         with open(output_path, "w", encoding="utf-8") as f:
