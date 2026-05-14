@@ -3,6 +3,7 @@ from .conftest import (
     batters_split_fixtures,
     batters_vs_L_fixture,
     batters_vs_R_fixture,
+    birthday_index_html_fixture,
     leaderboard_fixtures,
     load_fixture,
     pitchers_all_fixture,
@@ -24,4 +25,5 @@ __all__ = [
     "pitchers_split_fixtures",
     "leaderboard_fixtures",
     "rolling_html_fixture",
+    "birthday_index_html_fixture",
 ]

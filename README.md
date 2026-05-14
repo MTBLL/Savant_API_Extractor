@@ -287,6 +287,10 @@ strider_breakers = movement_df[
 
 This package is the **network layer only**. RT-tier responses are not cached by the handler — every `extract()` call hits Savant. Analytics-app callers should layer their own caching (per-request, per-day, etc.) appropriate to their query patterns. The handler is idempotent within a season, so a 1-day cache TTL is usually sufficient for these endpoints.
 
+#### `BirthdayIndexHandler` — RT-tier, state-inlined SSR
+
+Beyond the config-driven RT leaderboards above, `BirthdayIndexHandler` covers the Savant `/birthday-index` page (Sarah Langs' Birthday Index — a player's wOBA on their birthday vs. other days; a streaming-pitcher / platoon start-sit signal). It's RT-tier like the configs, but a dedicated handler rather than a `LeaderboardConfig`: the page is state-inlined SSR (no `?csv=true`), extracted the same way as the bulk `RollingHandler`. `extract(player_type="batter" | "pitcher")` returns **active players only** — the raw page is ~90% retired/historical. See SPECS.md Part III (SSR-2).
+
 For full per-endpoint column lists, header mappings, and live snapshot samples, see [`savant_api_extractor/leaderboards/SPECS.md`](savant_api_extractor/leaderboards/SPECS.md) (Part II: RT-tier endpoints).
 
 ## MLB StatsAPI integration

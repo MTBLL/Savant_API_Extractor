@@ -117,3 +117,11 @@ def leaderboard_fixtures(fixtures_dir: Path) -> dict[str, str]:
 def rolling_html_fixture(load_fixture: Callable[[str], str]) -> str:
     """Trimmed `/leaderboard/rolling` HTML — state-inlined `var rolling = {...}`."""
     return load_fixture("leaderboards/rolling.html")
+
+
+# The birthday-index page is also state-inlined SSR. This fixture is trimmed
+# to 3 active + 2 inactive rows so the active-player filter is exercised.
+@pytest.fixture
+def birthday_index_html_fixture(load_fixture: Callable[[str], str]) -> str:
+    """Trimmed `/birthday-index` HTML — state-inlined `const birthdayData = [...]`."""
+    return load_fixture("leaderboards/birthday_index.html")
