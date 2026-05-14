@@ -8,7 +8,7 @@ Each section captures:
 - Raw column list (the order Savant returns them in)
 - Header mapping (raw → normalized) — driven by the config module
 - Identity columns (the natural key for joins downstream)
-- A raw Ohtani sample row (he's the cross-leaderboard anchor — present in all 7)
+- A raw Ohtani sample row (he's the cross-leaderboard anchor — present in all 10)
 
 If Savant changes a column name or adds/removes columns, the live response will diverge from the raw-column list captured here. The handler will silently drop unmapped columns (intentional) so the practical failure mode is "downstream tables suddenly missing data," not a hard error. Re-run the snapshot when investigating.
 
@@ -322,6 +322,68 @@ competitive_runs | bolts | hp_to_1b | sprint_speed
   "player_id": 660271, "team_id": 119, "team": "LAD",
   "position": "DH", "age": 31, "competitive_runs": 53,
   "bolts": null, "hp_to_1b": 4.22, "sprint_speed": 27.1
+}
+```
+
+---
+
+## 9. `swing_take_batter` — Statcast Run Value Leaderboard (batting)
+
+**URL:** `https://baseballsavant.mlb.com/leaderboard/swing-take?year=2026&team=&leverage=Neutral&group=Batter&type=All&sub_type=null&min=q&csv=true`
+**Today (2026-05-14):** 300 rows × 11 columns
+**Identity:** `(player_id, year)`
+
+> ⚠️ **Full canonical param set required.** A bare `?type=batter&csv=true` returns a header-only response — Savant's SSR template needs all of `team`, `leverage`, `group`, `type`, `sub_type`, `min` present or it serves an empty dataset. Context-Neutral only (`leverage=Neutral`); the page's alternate UI decompositions (swing/take split, pitch-type cross-tab) are out of scope.
+
+### Raw columns
+```
+year | last_name, first_name | player_id | team_id | pa | pitches
+runs_all | runs_heart | runs_shadow | runs_chase | runs_waste
+```
+
+### Header mappings
+| raw | renamed |
+|---|---|
+| `year` | `year` |
+| `last_name, first_name` | `name` |
+| `player_id` | `player_id` |
+| `team_id` | `team_id` |
+| `pa` | `PA` |
+| `pitches` | `pitches` |
+| `runs_all` | `runs_all` |
+| `runs_heart` | `runs_heart` |
+| `runs_shadow` | `runs_shadow` |
+| `runs_chase` | `runs_chase` |
+| `runs_waste` | `runs_waste` |
+
+`runs_all` is the season-total run value; `runs_heart`/`runs_shadow`/`runs_chase`/`runs_waste` decompose it by Savant attack zone. Positive = runs created.
+
+### Ohtani sample (raw)
+```json
+{
+  "year": 2026, "last_name, first_name": "Ohtani, Shohei",
+  "player_id": 660271, "team_id": 119, "pa": 179, "pitches": 714,
+  "runs_all": 3.73, "runs_heart": -8.35, "runs_shadow": 0.69,
+  "runs_chase": 5.94, "runs_waste": 5.44
+}
+```
+
+---
+
+## 10. `swing_take_pitcher` — Statcast Run Value Leaderboard (pitching)
+
+**URL:** `https://baseballsavant.mlb.com/leaderboard/swing-take?year=2026&team=&leverage=Neutral&group=Pitcher&type=All&sub_type=null&min=q&csv=true`
+**Today (2026-05-14):** 300 rows × 11 columns
+**Identity:** `(player_id, year)`
+**Schema:** identical to `swing_take_batter` — same 11 raw columns, same mapping. Only the `group` param flips (`Pitcher`). Sign convention flips with it: positive `runs_*` = runs prevented (good for the pitcher).
+
+### Ohtani sample (raw)
+```json
+{
+  "year": 2026, "last_name, first_name": "Ohtani, Shohei",
+  "player_id": 660271, "team_id": 119, "pa": 171, "pitches": 667,
+  "runs_all": 14.27, "runs_heart": 13.95, "runs_shadow": 4.05,
+  "runs_chase": -1.02, "runs_waste": -2.72
 }
 ```
 
