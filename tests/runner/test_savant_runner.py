@@ -245,8 +245,9 @@ def test_runner_run_all_with_leaderboards(
     batters_split_fixtures: dict[str, str],
     pitchers_split_fixtures: dict[str, str],
     leaderboard_fixtures: dict[str, str],
+    rolling_html_fixture: str,
 ) -> None:
-    """End-to-end: 6 split calls + one call per ETL config, one file per result."""
+    """End-to-end: splits + one call per ETL config + rolling, one file per result."""
     runner = SavantRunner(
         season="2026",
         extraction_type="all",
@@ -262,19 +263,26 @@ def test_runner_run_all_with_leaderboards(
         leaderboard_fixtures=leaderboard_fixtures,
     )
 
+    # RollingHandler uses its own requests.get (not base_handler's), so the
+    # URL router doesn't cover it — patch its HTML fetch directly.
     with patch(
         "savant_api_extractor.handlers.base_handler.requests.get",
         side_effect=router,
-    ) as mock_get:
+    ) as mock_get, patch.object(
+        runner.rolling_handler, "_fetch_html", return_value=rolling_html_fixture
+    ):
         results = runner.run()
 
     # 6 split calls + one call per ETL-tier config. (expected_statistics_batter
     # is intentionally not an ETL config — its columns live in the batter
-    # splits export — so the count tracks len(ETL_TIER_CONFIGS).)
+    # splits export — so the count tracks len(ETL_TIER_CONFIGS).) Rolling is
+    # patched at _fetch_html, so it doesn't add to base_handler's mock_get.
     assert mock_get.call_count == 6 + len(ETL_TIER_CONFIGS)
 
-    # Results dict has 2 split keys + one key per ETL-tier config
-    expected_keys = {"batters", "pitchers"} | {c.name for c in ETL_TIER_CONFIGS}
+    # Results dict has 2 split keys + one key per ETL-tier config + rolling
+    expected_keys = (
+        {"batters", "pitchers", "rolling"} | {c.name for c in ETL_TIER_CONFIGS}
+    )
     assert set(results.keys()) == expected_keys
 
     # One output file per result key
@@ -295,11 +303,24 @@ def test_runner_run_all_with_leaderboards(
     ohtani_pas = [r for r in pas_rows if r["name"] == "Ohtani, Shohei"]
     assert len(ohtani_pas) > 1  # multiple pitch types faced
 
+    # Rolling is long-format on (cat, cat_bin) — all 6 categories present
+    rolling_file = next(tmp_path.glob("savant_rolling_*.json"))
+    rolling_rows = json.loads(rolling_file.read_text())
+    assert {(r["cat"], r["cat_bin"]) for r in rolling_rows} == {
+        ("Batter", "50"),
+        ("Batter", "100"),
+        ("Batter", "250"),
+        ("Pitcher", "50"),
+        ("Pitcher", "100"),
+        ("Pitcher", "250"),
+    }
+
 
 def test_runner_leaderboard_failure_logs_and_reraises(
     tmp_path: Path,
     batters_split_fixtures: dict[str, str],
     pitchers_split_fixtures: dict[str, str],
+    rolling_html_fixture: str,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """When a leaderboard pull fails, the runner logs which one failed and re-raises.
@@ -332,6 +353,8 @@ def test_runner_leaderboard_failure_logs_and_reraises(
         runner.leaderboard_handler,
         "extract",
         side_effect=RuntimeError("simulated leaderboard failure"),
+    ), patch.object(
+        runner.rolling_handler, "_fetch_html", return_value=rolling_html_fixture
     ):
         with pytest.raises(RuntimeError, match="simulated leaderboard failure"):
             runner.run()

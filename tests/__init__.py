@@ -9,6 +9,7 @@ from .conftest import (
     pitchers_split_fixtures,
     pitchers_vs_L_fixture,
     pitchers_vs_R_fixture,
+    rolling_html_fixture,
 )
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "pitchers_vs_L_fixture",
     "pitchers_split_fixtures",
     "leaderboard_fixtures",
+    "rolling_html_fixture",
 ]

@@ -109,3 +109,11 @@ def leaderboard_fixtures(fixtures_dir: Path) -> dict[str, str]:
         path.stem: path.read_text()
         for path in sorted(leaderboards_dir.glob("*.csv"))
     }
+
+
+# The rolling-windows leaderboard is state-inlined SSR (HTML, not CSV), so it
+# gets a dedicated HTML fixture rather than joining `leaderboard_fixtures`.
+@pytest.fixture
+def rolling_html_fixture(load_fixture: Callable[[str], str]) -> str:
+    """Trimmed `/leaderboard/rolling` HTML — state-inlined `var rolling = {...}`."""
+    return load_fixture("leaderboards/rolling.html")

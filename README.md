@@ -88,14 +88,14 @@ from savant_api_extractor.utils.percentile_ranks import add_percentile_rank_colu
 
 ## Output Files
 
-A full `all` extraction writes **ten JSON files** to the output directory:
+A full `all` extraction writes **thirteen JSON files** to the output directory:
 
 **Two handedness-split files** (from the `statcast_search` endpoint family):
 
 - `savant_batters_YYYY_MM_DD_HHMM.json` — batter rows, up to 3 per player (one per `opp_hand`)
 - `savant_pitchers_YYYY_MM_DD_HHMM.json` — pitcher rows, same shape
 
-**Eight leaderboard files** (from the `/leaderboard/*?csv=true` endpoint family):
+**Ten leaderboard files** (from the `/leaderboard/*?csv=true` endpoint family):
 
 - `savant_statcast_batter_YYYY_MM_DD_HHMM.json` — contact quality (hit)
 - `savant_statcast_pitcher_YYYY_MM_DD_HHMM.json` — contact quality (allowed)
@@ -105,16 +105,16 @@ A full `all` extraction writes **ten JSON files** to the output directory:
 - `savant_pitch_arsenal_stats_batter_YYYY_MM_DD_HHMM.json` — batter per-pitch outcomes (long on `pitch_type`)
 - `savant_pitch_arsenal_stats_pitcher_YYYY_MM_DD_HHMM.json` — pitcher per-pitch outcomes (long on `pitch_type`)
 - `savant_sprint_speed_YYYY_MM_DD_HHMM.json` — baserunning speed + bolts
+- `savant_swing_take_batter_YYYY_MM_DD_HHMM.json` — Statcast Run Value Leaderboard (batting): `runs_all` + zone decomposition
+- `savant_swing_take_pitcher_YYYY_MM_DD_HHMM.json` — Statcast Run Value Leaderboard (pitching): same schema, runs prevented
+
+**One state-inlined SSR file** (`/leaderboard/rolling` — HTML, not `?csv=true`):
+
+- `savant_rolling_YYYY_MM_DD_HHMM.json` — rolling-window form: most-recent-N-PA vs prior-N-PA deltas (50/100/250 windows), long on `(cat, cat_bin)`. The page embeds the dataset as a `var rolling = {...}` JS variable; the handler regex-extracts and `json.loads`-es it. See SPECS.md Part III.
 
 Each file is a JSON array of row objects, joinable on `player_id`. See [Leaderboard extracts](#leaderboard-extracts) below for the data contract and `savant_api_extractor/leaderboards/SPECS.md` for live per-endpoint snapshots.
 
 To skip the leaderboard pulls (splits only), construct the runner with `include_leaderboards=False`.
-
-### Known follow-ups (not yet in the extract)
-
-These Savant data sources are intentionally **not** in the current extract; each has a separate planned implementation.
-
-- **Rolling-windows leaderboard** (`/leaderboard/rolling`) — Compares each player's most-recent N-PA window (50/100/250) to the prior N-PA window of the same size, surfacing a "trending up/down" delta on `ba`/`slg`/`woba`/`xba`/`xslg`/`xwoba`. The page is **state-inlined SSR** — the entire dataset (~2,400 rows across 6 categories) ships as a `var rolling = {...}` JavaScript variable inside a `<script>` tag, not via a separate XHR. `?csv=true` returns the same HTML. Extraction is a regex + `json.loads` parse of that variable; ~50ms per pull, no browser. Decision made in MTBL-163 (Option A); implementation tracked as a separate follow-up.
 
 Downstream consumers should treat each row as role-specific, handedness-split
 player-season data. The unique key for a row is the tuple
@@ -197,7 +197,7 @@ Behavior notes:
 
 ### Leaderboard extracts
 
-The eight `savant_{slug}_*.json` files are independent extracts of Savant's `/leaderboard/{slug}?csv=true` endpoints — different schemas, different identity keys, joinable on `player_id` downstream.
+The ten `savant_{slug}_*.json` leaderboard files are independent extracts of Savant's `/leaderboard/{slug}?csv=true` endpoints — different schemas, different identity keys, joinable on `player_id` downstream. The `savant_rolling_*.json` file is also leaderboard-derived, but the rolling page is state-inlined SSR rather than a `?csv=true` endpoint (see its row below and SPECS.md Part III).
 
 #### Per-endpoint contract
 
@@ -211,6 +211,9 @@ The eight `savant_{slug}_*.json` files are independent extracts of Savant's `/le
 | `pitch_arsenal_stats_batter` | `(player_id, pitch_type)` | matchup projection — batter vs pitch-type (long-format) |
 | `pitch_arsenal_stats_pitcher` | `(player_id, pitch_type)` | matchup projection — pitcher arsenal (long-format) |
 | `sprint_speed` | `(player_id,)` | SB — sprint_speed, bolts, hp_to_1b |
+| `swing_take_batter` | `(player_id, year)` | OBP, overall batting value — run value + zone decomposition |
+| `swing_take_pitcher` | `(player_id, year)` | ERA, WHIP — run value prevented (same schema as batter) |
+| `rolling` | `(player_id, cat, cat_bin)` | recent form — rolling-window deltas (state-inlined SSR; long-format) |
 
 > The batter variant of `expected_statistics` is intentionally **not** ETL'd — every column it provided (PA, AVG, xAVG/xAVGdiff, SLG/xSLG/xSLGdiff, wOBA/xwOBA/wOBAdiff, BIP) is also returned by the `statcast_search` endpoint that feeds the `savant_batters_*.json` splits file. Pulling it would be redundant.
 
