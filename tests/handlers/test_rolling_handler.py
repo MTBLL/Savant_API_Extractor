@@ -9,9 +9,10 @@ markup, and a guard test fails loudly if Savant changes the template.
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 
 from savant_api_extractor.handlers.rolling_handler import (
     HEADER_MAPPINGS,
@@ -117,3 +118,50 @@ class TestRollingHandler:
         )
         with pytest.raises(ValueError, match="pattern not found"):
             RollingHandler._parse_rolling_blob(broken_html)
+
+    def test_extract_handles_all_empty_blob(self) -> None:
+        """A valid blob whose 6 category lists are all empty yields an empty
+        DataFrame, not a crash.
+
+        Without the `if "name" in df.columns` guard, an all-empty blob makes
+        `pd.DataFrame([])` column-less and `add_name_columns` asserts on the
+        missing `name` column — aborting the whole run on an empty-result day.
+        """
+        empty_html = (
+            "<script>var rolling = {"
+            '"Batter50":[],"Pitcher50":[],"Batter100":[],'
+            '"Pitcher100":[],"Batter250":[],"Pitcher250":[]'
+            "};var query = {};</script>"
+        )
+        handler = RollingHandler()
+        with patch.object(handler, "_fetch_html", return_value=empty_html):
+            df = handler.extract()
+        assert df.empty
+        assert len(df) == 0
+
+    def test_fetch_html_returns_page_text(self) -> None:
+        """_fetch_html GETs the rolling URL and returns the response text."""
+        handler = RollingHandler()
+        with patch(
+            "savant_api_extractor.handlers.rolling_handler.requests.get"
+        ) as mock_get:
+            mock_response = MagicMock()
+            mock_response.text = "<html>rolling page</html>"
+            mock_response.raise_for_status = MagicMock()
+            mock_get.return_value = mock_response
+            result = handler._fetch_html()
+
+        assert result == "<html>rolling page</html>"
+        mock_get.assert_called_once_with(
+            RollingHandler.ROLLING_URL, timeout=30
+        )
+
+    def test_fetch_html_raises_on_request_error(self) -> None:
+        """Network errors from _fetch_html propagate as RequestException."""
+        handler = RollingHandler()
+        with patch(
+            "savant_api_extractor.handlers.rolling_handler.requests.get",
+            side_effect=requests.exceptions.ConnectionError("boom"),
+        ):
+            with pytest.raises(requests.exceptions.ConnectionError):
+                handler._fetch_html()

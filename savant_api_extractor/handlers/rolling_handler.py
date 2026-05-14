@@ -92,7 +92,9 @@ class RollingHandler(BaseHandler):
         Returns:
             One long-format DataFrame, one row per `(player_id, cat, cat_bin)`.
             Columns are the `HEADER_MAPPINGS` targets plus the name-parser
-            additions (`first_name`, `last_name`, `name_ascii`, `slug`).
+            additions (`first_name`, `last_name`, `name_ascii`, `slug`). An
+            all-empty blob yields an empty (column-less) DataFrame rather than
+            raising.
         """
         self.logger.info("Extracting rolling-windows leaderboard")
         html = self._fetch_html()
@@ -101,15 +103,27 @@ class RollingHandler(BaseHandler):
         rows: list[dict[str, object]] = []
         for category_rows in blob.values():
             rows.extend(category_rows)
-        self.logger.info(
-            f"Parsed {len(rows)} rolling rows across {len(blob)} categories"
-        )
+        if rows:
+            self.logger.info(
+                f"Parsed {len(rows)} rolling rows across {len(blob)} categories"
+            )
+        else:
+            # A valid blob whose 6 category lists are all empty — an
+            # empty-result day, or an upstream filter / template change.
+            # Surface it rather than writing a silent empty file.
+            self.logger.warning(
+                "Rolling blob parsed but all categories were empty"
+            )
 
         df = pd.DataFrame(rows)
         df = df.rename(columns=HEADER_MAPPINGS)
         mapped = set(HEADER_MAPPINGS.values())
         df = df[[col for col in df.columns if col in mapped]].copy()
-        df = add_name_columns(df)
+        # `name` is in HEADER_MAPPINGS, so it is present whenever there are
+        # rows. The guard mirrors LeaderboardHandler: an empty blob yields a
+        # column-less frame, and add_name_columns would assert on it.
+        if "name" in df.columns:
+            df = add_name_columns(df)
         return df
 
     def _fetch_html(self) -> str:
