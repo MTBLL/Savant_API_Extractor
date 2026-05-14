@@ -413,6 +413,11 @@ with ThreadPoolExecutor(max_workers=4) as ex:
 "
 ```
 
+This manual snapshot is for ad-hoc investigation. For **automated drift
+detection**, the integration suite (`pytest -m integration`) hits the live
+endpoints and asserts the response shape still matches what the configs and
+handlers expect — see the README's "Testing" section.
+
 ---
 
 # Part II: RT-tier endpoints

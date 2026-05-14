@@ -394,3 +394,12 @@ better for player evaluation. Identifier and metadata columns (`player_id`,
 `name`, `first_name`, `last_name`, `name_ascii`, `slug`, `player_type`,
 `opp_hand`) are excluded from ranking by default; pass a custom
 `excluded_columns` argument to override.
+
+## Testing
+
+Two layers, run separately:
+
+- **Unit tests** — `uv run pytest tests/` (or just `uv run pytest`). Fast, hermetic, no network: handlers and configs are exercised against captured fixtures under `tests/fixtures/`. This is what the pre-push git hook and the PR/push CI run, gated at 100% coverage.
+- **Integration tests** — `uv run pytest -m integration`. These hit the **live** Savant / MLB StatsAPI endpoints and assert the response *shape* (column/key sets, non-empty, types) still matches what the code expects. They are **excluded from the default run** so a Savant outage or template change can't block an unrelated push or PR; a weekly scheduled job (`.github/workflows/integration.yml`) runs them, and you can trigger it on demand via `workflow_dispatch`.
+
+The two layers are complementary: fixture unit tests prove the *parse logic* is correct; integration tests catch Savant *drifting* the source out from under a frozen fixture.

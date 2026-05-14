@@ -1,0 +1,28 @@
+name: Integration (live endpoints)
+
+# Integration tests hit live Savant / MLB StatsAPI endpoints to check that
+# response shapes haven't drifted. They are deliberately NOT part of the
+# blocking PR/push CI (pytest.yml) — a Savant outage or a template change
+# must not block feature work. This job runs on a weekly schedule (and on
+# demand) so drift is surfaced without ever gating a PR.
+on:
+  schedule:
+    - cron: "0 13 * * 1" # Mondays 13:00 UTC
+  workflow_dispatch:
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+      - name: Install dependencies
+        run: uv sync --dev
+      - name: Run integration tests (live endpoints)
+        run: uv run pytest -m integration -v

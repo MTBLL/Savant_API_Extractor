@@ -50,6 +50,13 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+markers = [
+    "integration: hits live Savant / MLB StatsAPI endpoints to validate response shape. Excluded from the default run — run with `pytest -m integration` (see .github/workflows/integration.yml).",
+]
+# Integration tests are excluded by default so a Savant outage / template
+# drift never blocks the pre-push coverage gate or the PR/push CI. Override
+# with `pytest -m integration` to run only them.
+addopts = "-m 'not integration'"
 
 [tool.coverage.run]
 omit = [
