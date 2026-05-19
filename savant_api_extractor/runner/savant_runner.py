@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import logging
+import sys
 import time
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
 
 import pandas as pd
 from pandas.core.frame import DataFrame
-from rich.console import Group
+from rich.console import Console, Group
 from rich.live import Live
 from rich.progress import (
     BarColumn,
@@ -18,6 +22,39 @@ from rich.progress import (
     TimeElapsedColumn,
     TimeRemainingColumn,
 )
+
+
+@contextmanager
+def _route_stdout_log_handlers_through_live() -> Iterator[None]:
+    """Repoint every stdout-bound logging.StreamHandler at the current
+    ``sys.stdout`` for the duration of the context.
+
+    ``rich.live.Live`` redirects ``sys.stdout`` while active so log lines
+    written through it interleave cleanly above the live region. But any
+    existing ``logging.StreamHandler(sys.stdout)`` cached the *original*
+    stdout at construction time, so its writes bypass the redirect and
+    tear the progress bars. Swapping their stream to the now-redirected
+    ``sys.stdout`` makes log output flow through rich without tearing.
+    """
+    restorations: list[tuple[logging.StreamHandler, object]] = []
+    seen: set[int] = set()
+    logger_names = ["root", *logging.Logger.manager.loggerDict.keys()]
+    for name in logger_names:
+        lg = logging.getLogger(None if name == "root" else name)
+        for h in lg.handlers:
+            if (
+                isinstance(h, logging.StreamHandler)
+                and not isinstance(h, logging.FileHandler)
+                and id(h) not in seen
+            ):
+                seen.add(id(h))
+                restorations.append((h, h.stream))
+                h.setStream(sys.stdout)
+    try:
+        yield
+    finally:
+        for handler, original in restorations:
+            handler.setStream(original)
 
 from savant_api_extractor.controller.savant_controller import (
     OPP_HAND_SPLITS,
@@ -169,6 +206,10 @@ class SavantRunner:
             # Two separate Progress instances grouped in a Live render so the
             # per-group bars (Splits / Leaderboards) stay above the overall
             # total bar regardless of which future finishes first.
+            # A single Console is shared so the bars and any log lines emitted
+            # during the fetch render through the same Live region without
+            # tearing.
+            console = Console()
             progress_columns = (
                 TextColumn("[progress.description]{task.description}"),
                 BarColumn(),
@@ -177,12 +218,20 @@ class SavantRunner:
                 TimeElapsedColumn(),
                 TimeRemainingColumn(),
             )
-            group_progress = Progress(*progress_columns, transient=True)
-            overall_progress = Progress(*progress_columns, transient=True)
+            group_progress = Progress(
+                *progress_columns, console=console, transient=False
+            )
+            overall_progress = Progress(
+                *progress_columns, console=console, transient=False
+            )
 
             with Live(
-                Group(group_progress, overall_progress), refresh_per_second=10
-            ):
+                Group(group_progress, overall_progress),
+                console=console,
+                refresh_per_second=10,
+                redirect_stdout=True,
+                redirect_stderr=True,
+            ), _route_stdout_log_handlers_through_live():
                 splits_task = group_progress.add_task(
                     "Splits", total=len(split_futures)
                 )
