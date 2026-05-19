@@ -5,6 +5,19 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+_PACKAGE_PREFIX = "savant_api_extractor."
+
+
+class _StripPackagePrefixFormatter(logging.Formatter):
+    """Formatter that drops the ``savant_api_extractor.`` prefix from
+    ``record.name`` so log lines stay readable without losing the rest of
+    the dotted path (e.g. ``handlers.base_handler.LeaderboardHandler``)."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        if record.name.startswith(_PACKAGE_PREFIX):
+            record.name = record.name[len(_PACKAGE_PREFIX):]
+        return super().format(record)
+
 
 class Logger:
     """Logger class that creates a logger instance for each class."""
@@ -31,7 +44,7 @@ class Logger:
             return
 
         # Create formatter
-        formatter = logging.Formatter(
+        formatter = _StripPackagePrefixFormatter(
             "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )
