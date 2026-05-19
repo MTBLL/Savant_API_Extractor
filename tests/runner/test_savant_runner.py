@@ -2,7 +2,9 @@
 
 import io
 import json
+import logging
 import re
+import sys
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -11,7 +13,10 @@ import pandas as pd
 import pytest
 
 from savant_api_extractor.leaderboards import ETL_TIER_CONFIGS
-from savant_api_extractor.runner.savant_runner import SavantRunner
+from savant_api_extractor.runner.savant_runner import (
+    SavantRunner,
+    _route_std_log_handlers_through_live,
+)
 from savant_api_extractor.utils.extraction_type import ExtractionType
 from savant_api_extractor.utils.thresholds import ThresholdType
 
@@ -444,3 +449,44 @@ def test_runner_split_invariant_R_L_subset_of_all(
             f"{role}: {len(missing_from_all)} player_ids appear in vs_R or "
             f"vs_L but not in all — sample: {sorted(missing_from_all)[:5]}"
         )
+
+
+class TestRouteStdLogHandlersThroughLive:
+    """Coverage for the log-stream rewiring helper used inside the Live block."""
+
+    def test_stdout_handler_repointed_and_stderr_left_on_stderr(self):
+        """An stdout-bound handler should move to the current sys.stdout
+        and an stderr-bound handler to the current sys.stderr. Both must
+        be restored on exit."""
+        stdout_handler = logging.StreamHandler(sys.__stdout__)
+        stderr_handler = logging.StreamHandler(sys.__stderr__)
+        other_stream = io.StringIO()
+        other_handler = logging.StreamHandler(other_stream)
+        try:
+            lg = logging.getLogger("savant.tests.route_helper")
+            lg.addHandler(stdout_handler)
+            lg.addHandler(stderr_handler)
+            lg.addHandler(other_handler)
+
+            fake_stdout = io.StringIO()
+            fake_stderr = io.StringIO()
+            saved_out, saved_err = sys.stdout, sys.stderr
+            sys.stdout, sys.stderr = fake_stdout, fake_stderr
+            try:
+                with _route_std_log_handlers_through_live():
+                    assert stdout_handler.stream is fake_stdout
+                    assert stderr_handler.stream is fake_stderr
+                    # Streams not matching __stdout__ / __stderr__ must
+                    # be untouched.
+                    assert other_handler.stream is other_stream
+            finally:
+                sys.stdout, sys.stderr = saved_out, saved_err
+
+            # Restored on exit.
+            assert stdout_handler.stream is sys.__stdout__
+            assert stderr_handler.stream is sys.__stderr__
+            assert other_handler.stream is other_stream
+        finally:
+            lg = logging.getLogger("savant.tests.route_helper")
+            for h in (stdout_handler, stderr_handler, other_handler):
+                lg.removeHandler(h)
