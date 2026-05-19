@@ -2,11 +2,22 @@
 
 from __future__ import annotations
 
+import time
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import pandas as pd
 from pandas.core.frame import DataFrame
+from rich.console import Group
+from rich.live import Live
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
 
 from savant_api_extractor.controller.savant_controller import (
     OPP_HAND_SPLITS,
@@ -152,22 +163,65 @@ class SavantRunner:
                 rolling_fut = ex.submit(self.rolling_handler.extract)
                 lb_futures[rolling_fut] = "rolling"
 
-            for fut in as_completed([*split_futures, *lb_futures]):
-                try:
-                    frame = fut.result()
-                except Exception as e:
+            all_futures = [*split_futures, *lb_futures]
+            fetch_start = time.perf_counter()
+
+            # Two separate Progress instances grouped in a Live render so the
+            # per-group bars (Splits / Leaderboards) stay above the overall
+            # total bar regardless of which future finishes first.
+            progress_columns = (
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                MofNCompleteColumn(),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                TimeElapsedColumn(),
+                TimeRemainingColumn(),
+            )
+            group_progress = Progress(*progress_columns, transient=True)
+            overall_progress = Progress(*progress_columns, transient=True)
+
+            with Live(
+                Group(group_progress, overall_progress), refresh_per_second=10
+            ):
+                splits_task = group_progress.add_task(
+                    "Splits", total=len(split_futures)
+                )
+                lb_task = (
+                    group_progress.add_task(
+                        "Leaderboards", total=len(lb_futures)
+                    )
+                    if lb_futures
+                    else None
+                )
+                overall_task = overall_progress.add_task(
+                    "Total progress", total=len(all_futures)
+                )
+
+                for fut in as_completed(all_futures):
+                    try:
+                        frame = fut.result()
+                    except Exception as e:
+                        if fut in split_futures:
+                            role, opp_hand = split_futures[fut]
+                            label = f"split {role}/{opp_hand}"
+                        else:
+                            label = f"leaderboard {lb_futures[fut]}"
+                        self.logger.error(f"Fetch failed [{label}]: {e}")
+                        raise
                     if fut in split_futures:
                         role, opp_hand = split_futures[fut]
-                        label = f"split {role}/{opp_hand}"
+                        split_frames[role][opp_hand] = frame
+                        group_progress.advance(splits_task)
                     else:
-                        label = f"leaderboard {lb_futures[fut]}"
-                    self.logger.error(f"Fetch failed [{label}]: {e}")
-                    raise
-                if fut in split_futures:
-                    role, opp_hand = split_futures[fut]
-                    split_frames[role][opp_hand] = frame
-                else:
-                    results[lb_futures[fut]] = frame
+                        results[lb_futures[fut]] = frame
+                        if lb_task is not None:
+                            group_progress.advance(lb_task)
+                    overall_progress.advance(overall_task)
+
+            fetch_elapsed = time.perf_counter() - fetch_start
+            self.logger.info(
+                f"Fetched {len(all_futures)} Savant payloads in {fetch_elapsed:.1f}s"
+            )
 
         # Concatenate each role's three splits in canonical all->R->L order.
         for role, by_hand in split_frames.items():
