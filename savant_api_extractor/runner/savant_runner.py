@@ -8,7 +8,7 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, TextIO
 
 import pandas as pd
 from pandas.core.frame import DataFrame
@@ -25,31 +25,44 @@ from rich.progress import (
 
 
 @contextmanager
-def _route_stdout_log_handlers_through_live() -> Iterator[None]:
-    """Repoint every stdout-bound logging.StreamHandler at the current
-    ``sys.stdout`` for the duration of the context.
+def _route_std_log_handlers_through_live() -> Iterator[None]:
+    """Repoint each std{out,err}-bound logging.StreamHandler at the
+    matching redirected stream for the duration of the context.
 
-    ``rich.live.Live`` redirects ``sys.stdout`` while active so log lines
-    written through it interleave cleanly above the live region. But any
-    existing ``logging.StreamHandler(sys.stdout)`` cached the *original*
-    stdout at construction time, so its writes bypass the redirect and
-    tear the progress bars. Swapping their stream to the now-redirected
-    ``sys.stdout`` makes log output flow through rich without tearing.
+    ``rich.live.Live`` redirects ``sys.stdout`` and ``sys.stderr`` while
+    active so log lines interleave cleanly above the live region. But any
+    existing ``logging.StreamHandler`` cached the original interpreter
+    stream at construction time, so its writes bypass the redirect and
+    tear the progress bars.
+
+    Stdout-bound handlers are repointed at the redirected ``sys.stdout``
+    and stderr-bound handlers at the redirected ``sys.stderr``, so
+    channel semantics are preserved (callers that pipe stdout and stderr
+    separately still see warnings/errors on stderr). Handlers bound to
+    any other stream are left alone.
     """
-    restorations: list[tuple[logging.StreamHandler, object]] = []
+    restorations: list[tuple[logging.StreamHandler, TextIO]] = []
     seen: set[int] = set()
     logger_names = ["root", *logging.Logger.manager.loggerDict.keys()]
     for name in logger_names:
         lg = logging.getLogger(None if name == "root" else name)
         for h in lg.handlers:
             if (
-                isinstance(h, logging.StreamHandler)
-                and not isinstance(h, logging.FileHandler)
-                and id(h) not in seen
+                not isinstance(h, logging.StreamHandler)
+                or isinstance(h, logging.FileHandler)
+                or id(h) in seen
             ):
-                seen.add(id(h))
-                restorations.append((h, h.stream))
-                h.setStream(sys.stdout)
+                continue
+            seen.add(id(h))
+            new_stream: TextIO
+            if h.stream is sys.__stdout__:
+                new_stream = sys.stdout
+            elif h.stream is sys.__stderr__:
+                new_stream = sys.stderr
+            else:
+                continue
+            restorations.append((h, h.stream))
+            h.setStream(new_stream)
     try:
         yield
     finally:
@@ -231,7 +244,7 @@ class SavantRunner:
                 refresh_per_second=10,
                 redirect_stdout=True,
                 redirect_stderr=True,
-            ), _route_stdout_log_handlers_through_live():
+            ), _route_std_log_handlers_through_live():
                 splits_task = group_progress.add_task(
                     "Splits", total=len(split_futures)
                 )
