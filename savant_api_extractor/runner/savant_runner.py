@@ -262,9 +262,12 @@ class SavantRunner:
                         split_frames[role][opp_hand] = frame
                         group_progress.advance(splits_task)
                     else:
+                        # Reaching this branch implies lb_futures is
+                        # non-empty (the future came out of it), so lb_task
+                        # was created above.
+                        assert lb_task is not None
                         results[lb_futures[fut]] = frame
-                        if lb_task is not None:
-                            group_progress.advance(lb_task)
+                        group_progress.advance(lb_task)
                     overall_progress.advance(overall_task)
 
             fetch_elapsed = time.perf_counter() - fetch_start
