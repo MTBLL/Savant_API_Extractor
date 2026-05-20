@@ -31,9 +31,18 @@ def _route_std_log_handlers_through_live() -> Iterator[None]:
 
     ``rich.live.Live`` redirects ``sys.stdout`` and ``sys.stderr`` while
     active so log lines interleave cleanly above the live region. But any
-    existing ``logging.StreamHandler`` cached the original interpreter
-    stream at construction time, so its writes bypass the redirect and
-    tear the progress bars.
+    existing ``logging.StreamHandler`` cached its stream at construction
+    time, so its writes bypass the redirect and tear the progress bars.
+
+    A handler counts as stdout-bound if its stream is the genuine
+    interpreter stdout (``sys.__stdout__``) *or* the host's active stdout
+    as it was before ``Live`` wrapped it. The second case matters in
+    hosts that themselves wrap ``sys.stdout`` (Jupyter, pytest capture,
+    other managed runners): there a handler caches a host proxy that is
+    not ``sys.__stdout__``, so an ``is sys.__stdout__`` check alone would
+    miss it and leave the live display tearing. ``Live`` wraps the host
+    stream in a ``rich.file_proxy.FileProxy`` whose ``rich_proxied_file``
+    attribute exposes the stream it replaced.
 
     Stdout-bound handlers are repointed at the redirected ``sys.stdout``
     and stderr-bound handlers at the redirected ``sys.stderr``, so
@@ -41,6 +50,14 @@ def _route_std_log_handlers_through_live() -> Iterator[None]:
     separately still see warnings/errors on stderr). Handlers bound to
     any other stream are left alone.
     """
+    stdout_redirected = sys.stdout
+    stderr_redirected = sys.stderr
+    active_stdout = getattr(
+        stdout_redirected, "rich_proxied_file", stdout_redirected
+    )
+    active_stderr = getattr(
+        stderr_redirected, "rich_proxied_file", stderr_redirected
+    )
     restorations: list[tuple[logging.StreamHandler, TextIO]] = []
     seen: set[int] = set()
     logger_names = ["root", *logging.Logger.manager.loggerDict.keys()]
@@ -55,10 +72,10 @@ def _route_std_log_handlers_through_live() -> Iterator[None]:
                 continue
             seen.add(id(h))
             new_stream: TextIO
-            if h.stream is sys.__stdout__:
-                new_stream = sys.stdout
-            elif h.stream is sys.__stderr__:
-                new_stream = sys.stderr
+            if h.stream is sys.__stdout__ or h.stream is active_stdout:
+                new_stream = stdout_redirected
+            elif h.stream is sys.__stderr__ or h.stream is active_stderr:
+                new_stream = stderr_redirected
             else:
                 continue
             restorations.append((h, h.stream))

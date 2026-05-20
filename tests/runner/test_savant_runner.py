@@ -490,3 +490,33 @@ class TestRouteStdLogHandlersThroughLive:
             lg = logging.getLogger("savant.tests.route_helper")
             for h in (stdout_handler, stderr_handler, other_handler):
                 lg.removeHandler(h)
+
+    def test_host_wrapped_stdout_handler_repointed(self):
+        """A handler bound to a host-wrapped sys.stdout (Jupyter / pytest
+        capture style) is not sys.__stdout__, yet must still be repointed
+        once rich.live.Live wraps that host stream in a FileProxy."""
+        from rich.console import Console
+        from rich.file_proxy import FileProxy
+
+        host_stdout = io.StringIO()  # what a host (e.g. pytest) installed
+        handler = logging.StreamHandler(host_stdout)
+        logger_name = "savant.tests.route_helper.wrapped"
+        try:
+            lg = logging.getLogger(logger_name)
+            lg.addHandler(handler)
+
+            # Live wraps the host stream; sys.stdout is now a FileProxy
+            # whose rich_proxied_file is the original host stream.
+            live_stdout = FileProxy(Console(file=io.StringIO()), host_stdout)
+            saved_out = sys.stdout
+            sys.stdout = live_stdout
+            try:
+                with _route_std_log_handlers_through_live():
+                    assert handler.stream is live_stdout
+            finally:
+                sys.stdout = saved_out
+
+            # Restored to the host stream on exit.
+            assert handler.stream is host_stdout
+        finally:
+            logging.getLogger(logger_name).removeHandler(handler)
