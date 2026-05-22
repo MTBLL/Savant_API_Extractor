@@ -5,8 +5,8 @@ Python's built-in `round()` uses banker's rounding (round-half-to-even):
 round half *up* consistently, so this module rounds via `decimal.Decimal`
 with `ROUND_HALF_UP` — ties go away from zero (`2.5` -> `3`, `-2.5` -> `-3`).
 
-This module imports pandas, so — like `percentile_ranks` — it is NOT
-re-exported from `utils/__init__.py`; import the full path.
+This module imports pandas, so it is NOT re-exported from
+`utils/__init__.py`; import the full path.
 """
 
 from __future__ import annotations
