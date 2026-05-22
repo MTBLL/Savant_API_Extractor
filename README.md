@@ -76,15 +76,7 @@ The `SavantRunner` and the bulk-runner machinery do **not** load unless you expl
 | `savant_api_extractor.leaderboards` | LeaderboardConfig dataclasses for every Savant leaderboard (ETL and RT tiers) | lightweight (just dataclasses) |
 | `savant_api_extractor.controller` | SavantController — builds query params for the splits endpoint | imports handlers ⇒ pandas |
 | `savant_api_extractor.runner` | SavantRunner — bulk-extraction orchestrator | full stack |
-| `savant_api_extractor.utils` | Logger, mappings, thresholds, name parser. `percentile_ranks` (pandas) lives here too but is NOT re-exported by the package — import it via the full path if needed | stdlib only via the re-exports |
-
-### Computing percentile ranks downstream
-
-When you want percentile ranks computed against your own cohort (see [Percentile Ranks](#percentile-ranks-computed-downstream-not-at-extract-time) below), import the utility via the **full path** — the `utils/__init__.py` deliberately does not re-export it to keep the package's lazy-import surface clean:
-
-```python
-from savant_api_extractor.utils.percentile_ranks import add_percentile_rank_columns
-```
+| `savant_api_extractor.utils` | Logger, mappings, thresholds, name parser. Pandas-dependent helpers (e.g. `rounding`) live here too but are NOT re-exported by the package — import via the full path if needed | stdlib only via the re-exports |
 
 ## Output Files
 
@@ -353,47 +345,18 @@ fractions. For example, `35.0` means 35%.
 
 ### Percentile Ranks (computed downstream, not at extract time)
 
-The extractor emits **raw stat values only**. Percentile ranks are no longer
-applied at extract time — they're only meaningful relative to the cohort
-they're computed against, and the right cohort depends on the consumer:
-
-- A fantasy analytics app should compute percentiles against its rostered
-  player set (typically ~250 hitters / ~150 pitchers), not against Savant's
-  full qualified cohort (~600 players).
-- A scouting tool comparing prospects to league-wide benchmarks would want
-  the opposite — ranks against the full Savant cohort.
+The extractor emits **raw stat values only**. Percentile ranks are not
+applied at extract time — they're only meaningful relative to a reference
+cohort, and that choice is a transform-layer decision.
 
 Computing ranks at extract time would lock all downstream consumers to one
 cohort definition. Cohort mismatch inverts the rank signal at the tails (a
 90th-percentile fantasy hitter looks like a 75th-percentile MLB hitter, and
-vice versa). So this extractor's job is now to produce raw values; consumers
-compute their own ranks.
+vice versa). The extractor's job is to produce raw values; the T layer
+builds its own reference cohorts and ranks against them.
 
-The `add_percentile_rank_columns` utility used in earlier versions of this
-extractor remains exported for downstream use. Import and apply it after
-filtering to your cohort of interest:
-
-```python
-import pandas as pd
-from savant_api_extractor.utils.percentile_ranks import add_percentile_rank_columns
-
-# Load the extractor output and filter to your fantasy cohort:
-batters = pd.read_json("savant_batters_2025_10_01_1200.json")
-overall = batters[batters["opp_hand"] == "all"]
-rostered = overall[overall["player_id"].isin(my_fantasy_player_ids)]
-
-# Then rank within that cohort:
-ranked = add_percentile_rank_columns(rostered)
-# Adds `<stat>_pct_rnk` columns for every numeric stat field.
-```
-
-The function uses pandas average-tie percentile ranking, scaled 0–100 and
-rounded to one decimal place. A higher raw stat value receives a higher
-percentile rank — ranks are not direction-adjusted for whether higher is
-better for player evaluation. Identifier and metadata columns (`player_id`,
-`name`, `first_name`, `last_name`, `name_ascii`, `slug`, `player_type`,
-`opp_hand`) are excluded from ranking by default; pass a custom
-`excluded_columns` argument to override.
+The canonical T-layer implementation lives at
+`_transform/MTBL_Valuations/mtbl_valuations/io/savant_ranks.py`.
 
 ## Testing
 
