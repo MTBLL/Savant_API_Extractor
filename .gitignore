@@ -10,3 +10,4 @@ tmp_run/
 .temp/
 .tmp
 tickets/
+.DS_Store
