@@ -10,6 +10,11 @@ from savant_api_extractor.utils.logger import Logger
 from savant_api_extractor.utils.thresholds import ThresholdType
 
 
+# Shared resource pool the analytics pipeline reads from. Overridable per-run
+# via --output-dir for ad-hoc/local extractions.
+DEFAULT_OUTPUT_DIR = "/Users/Shared/BaseballHQ/resources/extract"
+
+
 @click.command()
 @click.option(
     "--threshold",
@@ -34,8 +39,8 @@ from savant_api_extractor.utils.thresholds import ThresholdType
 @click.option(
     "--output-dir",
     type=click.Path(file_okay=False, dir_okay=True),
-    default=".",
-    help="Output directory for JSON files (default: current directory)",
+    default=DEFAULT_OUTPUT_DIR,
+    help=f"Output directory for JSON files (default: {DEFAULT_OUTPUT_DIR})",
 )
 @click.option(
     "--type",

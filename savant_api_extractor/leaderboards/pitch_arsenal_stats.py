@@ -42,10 +42,18 @@ _HEADER_MAPPINGS = {
 }
 
 
+# Per-pitch-type minimum: a (player, pitch_type) row is emitted only if the
+# pitch was thrown/faced at least this many times. Savant's own default for
+# this endpoint silently drops low-usage pitches (e.g. a starter's 4th/5th
+# offering), which truncated arsenals to their top pitch only. Pinning it to
+# an explicit 50 surfaces real secondaries while still filtering noise pitches.
+_MIN_PITCHES = "50"
+
+
 BATTER = LeaderboardConfig(
     name="pitch_arsenal_stats_batter",
     url_path="pitch-arsenal-stats",
-    default_params={"type": "batter"},
+    default_params={"type": "batter", "minPitches": _MIN_PITCHES},
     header_mappings=_HEADER_MAPPINGS,
     identity_columns=("player_id", "pitch_type"),
 )
@@ -54,7 +62,7 @@ BATTER = LeaderboardConfig(
 PITCHER = LeaderboardConfig(
     name="pitch_arsenal_stats_pitcher",
     url_path="pitch-arsenal-stats",
-    default_params={"type": "pitcher"},
+    default_params={"type": "pitcher", "minPitches": _MIN_PITCHES},
     header_mappings=_HEADER_MAPPINGS,
     identity_columns=("player_id", "pitch_type"),
 )
