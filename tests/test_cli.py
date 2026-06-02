@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from click.testing import CliRunner
 
-from savant_api_extractor.__main__ import main
+from savant_api_extractor.__main__ import DEFAULT_OUTPUT_DIR, main
 from savant_api_extractor.utils.thresholds import ThresholdType
 
 
@@ -25,7 +25,7 @@ def test_cli_defaults_to_current_year() -> None:
         "2026",
         "all",
         ThresholdType.DEFAULT,
-        output_dir=Path("."),
+        output_dir=Path(DEFAULT_OUTPUT_DIR),
     )
     mock_runner_class.return_value.run.assert_called_once_with()
 
@@ -41,6 +41,17 @@ def test_cli_uses_explicit_season() -> None:
         "2025",
         "all",
         ThresholdType.DEFAULT,
-        output_dir=Path("."),
+        output_dir=Path(DEFAULT_OUTPUT_DIR),
     )
     mock_runner_class.return_value.run.assert_called_once_with()
+
+
+def test_cli_output_dir_flag_overrides_default() -> None:
+    runner = CliRunner()
+
+    with patch("savant_api_extractor.__main__.SavantRunner") as mock_runner_class:
+        result = runner.invoke(main, ["--output-dir", "/tmp/savant"])
+
+    assert result.exit_code == 0
+    _, kwargs = mock_runner_class.call_args
+    assert kwargs["output_dir"] == Path("/tmp/savant")
